@@ -36,7 +36,7 @@ indicator-center/
 |---|------|
 | 后端 | Spring Boot 3.x + Spring Cloud + MyBatis Plus |
 | 前端 | Vue 3 + Element Plus + ECharts |
-| 数据库 | MySQL 8.0 (11个业务库 + 指标库) |
+| 数据库 | PostgreSQL (11个业务库 + 指标库) |
 | 缓存 | Redis |
 | 注册中心 | Nacos |
 | 部署 | Docker Compose |
