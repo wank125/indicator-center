@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>指标中心 — 前端线框原型</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:#f0f2f5; color:#333; }
+
+/* Layout */
+.layout { display:flex; height:100vh; }
+
+/* Sidebar */
+.sidebar { width:240px; background:#001529; color:#fff; display:flex; flex-direction:column; }
+.sidebar-logo { padding:16px 20px; font-size:18px; font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); }
+.sidebar-menu { flex:1; overflow-y:auto; }
+.menu-item { padding:10px 20px; cursor:pointer; font-size:14px; display:flex; align-items:center; gap:8px; }
+.menu-item:hover { background:rgba(255,255,255,0.08); }
+.menu-item.active { background:#1890ff; }
+.menu-group { padding:10px 20px 4px; font-size:12px; color:rgba(255,255,255,0.4); text-transform:uppercase; }
+.dim-switch { display:flex; border-bottom:1px solid rgba(255,255,255,0.1); }
+.dim-btn { flex:1; padding:10px 4px; text-align:center; font-size:11px; cursor:pointer; border-right:1px solid rgba(255,255,255,0.1); }
+.dim-btn:last-child { border-right:none; }
+.dim-btn.active { background:#1890ff; }
+.tree-node { padding:4px 20px 4px 32px; font-size:13px; cursor:pointer; color:rgba(255,255,255,0.7); }
+.tree-node:hover { color:#fff; }
+.tree-node.selected { color:#1890ff; }
+.tree-leaf { padding:3px 20px 3px 48px; font-size:12px; cursor:pointer; color:rgba(255,255,255,0.55); }
+.tree-leaf:hover { color:#fff; }
+.tree-leaf.selected { color:#40a9ff; }
+
+/* Main */
+.main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+/* Header */
+.header { height:48px; background:#fff; border-bottom:1px solid #e8e8e8; display:flex; align-items:center; padding:0 24px; justify-content:space-between; }
+.header-title { font-size:16px; font-weight:600; }
+.header-actions { display:flex; gap:12px; align-items:center; }
+.breadcrumb { font-size:12px; color:#999; }
+.breadcrumb span { color:#1890ff; }
+
+/* Content */
+.content { flex:1; padding:16px 24px; overflow-y:auto; }
+
+/* KPI Cards */
+.kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:16px; }
+.kpi-card { background:#fff; border-radius:8px; padding:16px; border:1px solid #f0f0f0; }
+.kpi-label { font-size:12px; color:#999; margin-bottom:4px; }
+.kpi-value { font-size:22px; font-weight:700; }
+.kpi-change { font-size:11px; margin-top:4px; }
+.kpi-change.up { color:#52c41a; }
+.kpi-change.down { color:#ff4d4f; }
+
+/* Chart panels */
+.chart-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+.chart-panel { background:#fff; border-radius:8px; padding:16px; border:1px solid #f0f0f0; }
+.chart-title { font-size:14px; font-weight:600; margin-bottom:12px; }
+.chart-placeholder { height:200px; background:#fafafa; border-radius:4px; display:flex; align-items:center; justify-content:center; color:#bbb; font-size:13px; }
+
+/* Table */
+.data-panel { background:#fff; border-radius:8px; padding:16px; border:1px solid #f0f0f0; margin-bottom:16px; }
+.toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+.toolbar-left { display:flex; gap:8px; align-items:center; }
+.toolbar-right { display:flex; gap:8px; }
+select, input[type="date"], input[type="text"] { padding:4px 8px; border:1px solid #d9d9d9; border-radius:4px; font-size:13px; }
+.btn { padding:4px 12px; border-radius:4px; font-size:13px; cursor:pointer; border:1px solid #d9d9d9; background:#fff; }
+.btn-primary { background:#1890ff; color:#fff; border-color:#1890ff; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { background:#fafafa; padding:8px 12px; text-align:left; font-weight:600; border-bottom:1px solid #f0f0f0; }
+td { padding:8px 12px; border-bottom:1px solid #f0f0f0; }
+tr:hover td { background:#fafafa; }
+.pos { color:#52c41a; }
+.neg { color:#ff4d4f; }
+
+/* Config page */
+.config-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.form-group { margin-bottom:12px; }
+.form-group label { display:block; font-size:12px; color:#666; margin-bottom:4px; }
+.form-group input, .form-group select, .form-group textarea { width:100%; padding:6px 8px; border:1px solid #d9d9d9; border-radius:4px; }
+.formula-editor { font-family:monospace; background:#1e1e1e; color:#d4d4d4; padding:12px; border-radius:4px; font-size:13px; min-height:60px; }
+.formula-editor .ref { color:#4ec9b0; }
+.formula-editor .op { color:#d7ba7d; }
+.formula-editor .fn { color:#dcdbca; }
+.dep-box { display:flex; flex-wrap:wrap; gap:4px; }
+.dep-tag { background:#e6f7ff; color:#1890ff; padding:2px 8px; border-radius:4px; font-size:11px; }
+
+/* Tabs */
+.tabs { display:flex; border-bottom:1px solid #f0f0f0; margin-bottom:16px; }
+.tab { padding:8px 16px; cursor:pointer; font-size:14px; border-bottom:2px solid transparent; }
+.tab.active { color:#1890ff; border-bottom-color:#1890ff; font-weight:600; }
+
+/* Status badges */
+.badge { display:inline-block; padding:1px 6px; border-radius:3px; font-size:11px; }
+.badge-green { background:#f6ffed; color:#52c41a; border:1px solid #b7eb8f; }
+.badge-blue { background:#e6f7ff; color:#1890ff; border:1px solid #91d5ff; }
+.badge-orange { background:#fff7e6; color:#fa8c16; border:1px solid #ffd591; }
+.badge-red { background:#fff1f0; color:#f5222d; border:1px solid #ffa39e; }
+
+/* Calculation monitor */
+.calc-status { display:flex; gap:16px; margin-bottom:16px; }
+.calc-stat { text-align:center; }
+.calc-stat-num { font-size:24px; font-weight:700; }
+.calc-stat-label { font-size:11px; color:#999; }
+
+.page { display:none; }
+.page.active { display:block; }
+</style>
+</head>
+<body>
+<div class="layout">
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-logo">📊 指标中心</div>
+  <div class="dim-switch">
+    <div class="dim-btn active" onclick="switchDim(this,'business')">业务域</div>
+    <div class="dim-btn" onclick="switchDim(this,'market')">市场类型</div>
+    <div class="dim-btn" onclick="switchDim(this,'subject')">主体层级</div>
+  </div>
+  <div class="sidebar-menu">
+    <div class="menu-item active" onclick="showPage('dashboard',this)">📈 指标看板</div>
+    <div class="menu-item" onclick="showPage('query',this)">🔍 指标查询</div>
+    <div class="menu-item" onclick="showPage('config',this)">⚙️ 指标配置</div>
+    <div class="menu-item" onclick="showPage('monitor',this)">📋 计算监控</div>
+    <div class="menu-group">— 电量 —</div>
+    <div class="tree-node">合约电量</div>
+    <div class="tree-leaf">· 基数出清电量</div>
+    <div class="tree-leaf">· 中长期出清电量</div>
+    <div class="tree-leaf selected">· 合约出清电量</div>
+    <div class="tree-node">现货电量</div>
+    <div class="tree-leaf">· 日前出清电量</div>
+    <div class="tree-leaf">· 实时出清电量</div>
+    <div class="tree-node">偏差电量</div>
+    <div class="tree-leaf">· 日前偏差电量(正/负)</div>
+    <div class="tree-leaf">· 实时偏差电量(正/负)</div>
+    <div class="tree-node">省间电量</div>
+    <div class="tree-leaf">· 省间日前/日内/现货</div>
+    <div class="menu-group">— 电价 —</div>
+    <div class="tree-node">出清电价</div>
+    <div class="tree-node">偏差电价</div>
+    <div class="tree-node">综合电价</div>
+    <div class="menu-group">— 电费 —</div>
+    <div class="tree-node">合约电费</div>
+    <div class="tree-node">偏差电费</div>
+    <div class="tree-node">差价合约电费</div>
+    <div class="tree-node">增收电费</div>
+    <div class="menu-group">— 边际贡献 —</div>
+    <div class="tree-node">合约/偏差边际</div>
+    <div class="tree-node">全量边际/度电贡献</div>
+    <div class="menu-group">— 经营效率 —</div>
+    <div class="tree-leaf">· 度电收益</div>
+    <div class="tree-leaf">· 可利用小时数</div>
+    <div class="tree-leaf">· 完成率</div>
+    <div class="menu-group">— 同比/环比 —</div>
+    <div class="menu-group">— 排名 TOP10 —</div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+<div class="header">
+  <div>
+    <div class="header-title" id="pageTitle">指标看板</div>
+    <div class="breadcrumb">指标中心 / <span id="pageBread">看板概览</span></div>
+  </div>
+  <div class="header-actions">
+    <span style="font-size:12px;color:#999">山西电网</span>
+    <select style="width:100px"><option>山西</option><option>河南</option><option>湖北</option><option>蒙西</option><option>蒙东</option><option>宁夏</option><option>甘肃</option><option>陕西</option><option>云南</option><option>广西</option></select>
+    <span style="font-size:12px;color:#999">2026-04-24</span>
+  </div>
+</div>
+
+<div class="content">
+<!-- ============ PAGE 1: Dashboard ============ -->
+<div class="page active" id="page-dashboard">
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">中长期电量</div>
+      <div class="kpi-value">1,234.5 <span style="font-size:12px;color:#999">MWh</span></div>
+      <div class="kpi-change up">↑ 5.2% 同比</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">上网电量</div>
+      <div class="kpi-value">987.6 <span style="font-size:12px;color:#999">MWh</span></div>
+      <div class="kpi-change down">↓ 1.3% 环比</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">现货电费</div>
+      <div class="kpi-value">256,780 <span style="font-size:12px;color:#999">元</span></div>
+      <div class="kpi-change up">↑ 8.7% 同比</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">度电价格</div>
+      <div class="kpi-value">312.5 <span style="font-size:12px;color:#999">元/MWh</span></div>
+      <div class="kpi-change up">↑ 3.1% 同比</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">总边际贡献</div>
+      <div class="kpi-value">89,450 <span style="font-size:12px;color:#999">元</span></div>
+      <div class="kpi-change up">↑ 12.3% 同比</div>
+    </div>
+  </div>
+
+  <div class="chart-row">
+    <div class="chart-panel">
+      <div class="chart-title">日前出清电价曲线 (96点)</div>
+      <div class="chart-placeholder">📈 ECharts 日前出清电价分时曲线图<br><span style="font-size:11px">DAM_CLEARING_PRICE × 96 points</span></div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">实时/日前价差趋势</div>
+      <div class="chart-placeholder">📊 ECharts 日前实时价差柱状图<br><span style="font-size:11px">DAM_RTM_SPREAD × 最近30天</span></div>
+    </div>
+  </div>
+
+  <div class="chart-row">
+    <div class="chart-panel">
+      <div class="chart-title">收益 TOP10 电厂</div>
+      <table>
+        <tr><th>#</th><th>电厂</th><th>收益(万元)</th><th>度电收益</th></tr>
+        <tr><td>1</td><td>山西A厂</td><td>128.5</td><td>345.2</td></tr>
+        <tr><td>2</td><td>河南B厂</td><td>112.3</td><td>328.7</td></tr>
+        <tr><td>3</td><td>湖北C厂</td><td>98.1</td><td>312.5</td></tr>
+        <tr><td>4</td><td>蒙西D厂</td><td>87.6</td><td>298.4</td></tr>
+        <tr><td>5</td><td>甘肃E厂</td><td>76.2</td><td>287.1</td></tr>
+      </table>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-title">偏差分析</div>
+      <table>
+        <tr><th>指标</th><th>今日</th><th>昨日</th><th>变化</th></tr>
+        <tr><td>日前偏差电量</td><td>+45.2 MWh</td><td>+38.7</td><td class="pos">↑ 16.8%</td></tr>
+        <tr><td>实时偏差电量</td><td>-12.3 MWh</td><td>-8.5</td><td class="neg">↓ 扩大</td></tr>
+        <tr><td>现货偏差贡献</td><td>¥23,450</td><td>¥19,800</td><td class="pos">↑ 18.4%</td></tr>
+        <tr><td>合约覆盖率</td><td>78.5%</td><td>80.2%</td><td class="neg">↓ 1.7pp</td></tr>
+        <tr><td>合约边际贡献</td><td>¥56,780</td><td>¥52,100</td><td class="pos">↑ 9.0%</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PAGE 2: Query ============ -->
+<div class="page" id="page-query">
+  <div class="data-panel">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <select style="width:160px"><option>合约出清电量 (MLT_CONTRACT_ENERGY)</option><option>日前出清电价 (DAM_CLEARING_PRICE)</option><option>总电费 (TOTAL_FEE)</option><option>总边际贡献 (TOTAL_MARGIN)</option><option>度电收益 (PER_UNIT_REVENUE)</option></select>
+        <input type="date" value="2026-04-01"> ~ <input type="date" value="2026-04-24">
+        <select style="width:80px"><option>分时</option><option>日</option><option>月</option></select>
+        <button class="btn btn-primary">查询</button>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn">+ 添加对比指标</button>
+        <button class="btn">📥 导出Excel</button>
+      </div>
+    </div>
+
+    <div class="chart-panel" style="margin-bottom:12px">
+      <div class="chart-placeholder" style="height:240px">📈 合约出清电量 分时曲线图 (96点/日 × 24天)<br><span style="font-size:11px">MLT_CONTRACT_ENERGY | 粒度: 96点/日 | 山西电网</span></div>
+    </div>
+
+    <table>
+      <tr><th>日期</th><th>01:00</th><th>02:00</th><th>03:00</th><th>...</th><th>23:00</th><th>00:00</th><th>日合计</th><th>日均价</th></tr>
+      <tr><td>2026-04-24</td><td>12.5</td><td>11.8</td><td>10.2</td><td>...</td><td>15.3</td><td>13.1</td><td>312.4</td><td>13.0</td></tr>
+      <tr><td>2026-04-23</td><td>13.1</td><td>12.4</td><td>10.8</td><td>...</td><td>14.9</td><td>12.7</td><td>308.2</td><td>12.8</td></tr>
+      <tr><td>2026-04-22</td><td>12.8</td><td>11.9</td><td>10.5</td><td>...</td><td>15.1</td><td>13.4</td><td>315.7</td><td>13.2</td></tr>
+      <tr style="background:#f0f5ff"><td colspan="6"><strong>同环比对比</strong></td><td colspan="3"><span class="pos">↑ 5.2% 同比</span> | <span class="neg">↓ 1.3% 环比</span></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============ PAGE 3: Config ============ -->
+<div class="page" id="page-config">
+  <div class="tabs">
+    <div class="tab active">指标定义</div>
+    <div class="tab">数据源映射</div>
+    <div class="tab">计算公式</div>
+    <div class="tab">维度管理</div>
+  </div>
+  <div class="config-grid">
+    <div class="data-panel">
+      <div class="chart-title">指标定义</div>
+      <div class="form-group"><label>指标编码 *</label><input value="DAM_DEV_ENERGY"></div>
+      <div class="form-group"><label>指标名称 *</label><input value="日前偏差电量"></div>
+      <div class="form-group">
+        <label>指标类型 *</label>
+        <select><option>计算指标</option><option>原始指标</option><option>派生指标</option></select>
+      </div>
+      <div class="form-group">
+        <label>市场类型</label>
+        <select><option>现货市场</option><option>中长期市场</option><option>辅助服务市场</option><option>容量市场</option><option>绿色权益</option></select>
+      </div>
+      <div class="form-group"><label>一级分类</label><input value="电量"></div>
+      <div class="form-group"><label>二级分类</label><input value="日前偏差"></div>
+      <div class="form-group">
+        <label>计量单位</label>
+        <select><option>MWh</option><option>元/MWh</option><option>元</option><option>MW</option><option>%</option><option>h</option></select>
+      </div>
+      <div class="form-group">
+        <label>时间粒度</label>
+        <select><option>分时(96点)</option><option>日</option><option>月</option><option>年</option></select>
+      </div>
+      <div class="form-group"><label>计算层级</label><input type="number" value="2" style="width:80px"></div>
+      <div class="form-group"><label>业务说明</label><textarea rows="2">日前出清电量 - 合约出清电量</textarea></div>
+      <div style="margin-top:12px"><button class="btn btn-primary">保存</button> <button class="btn">取消</button></div>
+    </div>
+
+    <div class="data-panel">
+      <div class="chart-title">计算公式配置</div>
+      <div class="form-group"><label>公式类型</label><select><option>四则运算</option><option>条件分支</option><option>聚合汇总</option><option>同环比</option><option>排名</option></select></div>
+      <div class="form-group">
+        <label>公式表达式</label>
+        <div class="formula-editor">
+<span class="ref">{DAM_CLEARING_ENERGY}</span> <span class="op">-</span> <span class="ref">{MLT_CONTRACT_ENERGY}</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>依赖指标</label>
+        <div class="dep-box">
+          <span class="dep-tag">DAM_CLEARING_ENERGY (日前出清电量)</span>
+          <span class="dep-tag">MLT_CONTRACT_ENERGY (合约出清电量)</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>数据源映射</label>
+        <table style="font-size:12px">
+          <tr><th>依赖指标</th><th>源库</th><th>源表</th><th>源字段</th></tr>
+          <tr><td>DAM_CLEARING_ENERGY</td><td>bdss_spot_market</td><td>spot_ahead_trade</td><td>power</td></tr>
+          <tr><td>MLT_CONTRACT_ENERGY</td><td colspan="3"><span class="badge badge-blue">计算指标(L1)</span> = BASE_CLEARING_ENERGY + MLT_CLEARING_ENERGY</td></tr>
+        </table>
+      </div>
+      <div class="form-group">
+        <label>公式预览</label>
+        <div style="background:#fafafa;padding:8px;border-radius:4px;font-size:13px">
+          <strong>日前偏差电量</strong> = 日前出清电量(12.5) - 合约出清电量(8.3) = <strong style="color:#1890ff">4.2 MWh</strong>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:#999">
+        计算层级: Layer 2 (偏差计算层) → 排序: 45/199
+      </div>
+
+      <div style="margin-top:16px;border-top:1px solid #f0f0f0;padding-top:12px">
+        <div class="chart-title">依赖拓扑图</div>
+        <div style="background:#fafafa;padding:12px;border-radius:4px;font-size:12px;font-family:monospace;line-height:1.8">
+L0: BASE_CLEARING_ENERGY ─┐<br>
+L0: MLT_CLEARING_ENERGY ──┤→ L1: MLT_CONTRACT_ENERGY ─┐<br>
+L0: DAM_CLEARING_ENERGY ──────────────────────────────┤→ <strong style="color:#1890ff">L2: DAM_DEV_ENERGY</strong><br>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PAGE 4: Monitor ============ -->
+<div class="page" id="page-monitor">
+  <div class="calc-status">
+    <div class="calc-stat"><div class="calc-stat-num" style="color:#52c41a">192</div><div class="calc-stat-label">成功</div></div>
+    <div class="calc-stat"><div class="calc-stat-num" style="color:#ff4d4f">5</div><div class="calc-stat-label">失败</div></div>
+    <div class="calc-stat"><div class="calc-stat-num" style="color:#faad14">2</div><div class="calc-stat-label">跳过</div></div>
+    <div class="calc-stat"><div class="calc-stat-num">12.3s</div><div class="calc-stat-label">总耗时</div></div>
+    <div class="calc-stat"><div class="calc-stat-num">2026-04-25</div><div class="calc-stat-label">计算日期</div></div>
+    <div class="calc-stat"><div class="calc-stat-num">02:15</div><div class="calc-stat-label">开始时间</div></div>
+  </div>
+
+  <div class="data-panel">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <span style="font-weight:600">计算明细 (Layer 0-9)</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn btn-primary">🔄 手动重算</button>
+        <button class="btn">重算失败指标</button>
+      </div>
+    </div>
+    <table>
+      <tr><th>层级</th><th>指标编码</th><th>指标名称</th><th>状态</th><th>影响行数</th><th>耗时(ms)</th><th>备注</th></tr>
+      <tr><td><span class="badge badge-green">L0</span></td><td>DAM_CLEARING_PRICE</td><td>日前出清电价</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>23</td><td>-</td></tr>
+      <tr><td><span class="badge badge-green">L0</span></td><td>ONLINE_ENERGY</td><td>上网电量</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>18</td><td>-</td></tr>
+      <tr><td><span class="badge badge-blue">L1</span></td><td>MLT_CONTRACT_ENERGY</td><td>合约出清电量</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>5</td><td>-</td></tr>
+      <tr><td><span class="badge badge-orange">L2</span></td><td>DAM_DEV_ENERGY</td><td>日前偏差电量</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>4</td><td>-</td></tr>
+      <tr><td><span class="badge badge-orange">L2</span></td><td>SPOT_DEV_POS_ENERGY</td><td>现货正偏差电量</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>3</td><td>-</td></tr>
+      <tr><td><span class="badge" style="background:#fff7e6;color:#d48806;border:1px solid #ffd591">L3</span></td><td>TOTAL_FEE</td><td>总电费</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>6</td><td>-</td></tr>
+      <tr><td><span class="badge" style="background:#f9f0ff;color:#722ed1;border:1px solid #d3adf7">L5</span></td><td>TOTAL_MARGIN</td><td>总边际贡献</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>7</td><td>-</td></tr>
+      <tr><td><span class="badge badge-red">L7</span></td><td>PER_UNIT_REVENUE</td><td>度电收益</td><td><span class="badge badge-red">失败</span></td><td>0</td><td>-</td><td style="color:#ff4d4f">ONLINE_ENERGY=0, 除零异常</td></tr>
+      <tr><td><span class="badge" style="background:#e6f7ff;color:#096dd9;border:1px solid:#91d5ff">L8</span></td><td>ENERGY_YOY</td><td>电量-同比</td><td><span class="badge badge-green">成功</span></td><td>96</td><td>45</td><td>对比 2025-04-25</td></tr>
+    </table>
+  </div>
+</div>
+
+</div><!-- content -->
+</div><!-- main -->
+</div><!-- layout -->
+
+<script>
+function showPage(page, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+  if(el) el.classList.add('active');
+  const titles = {dashboard:'指标看板',query:'指标查询',config:'指标配置',monitor:'计算监控'};
+  const breads = {dashboard:'看板概览',query:'数据查询',config:'定义/公式/数据源',monitor:'计算任务日志'};
+  document.getElementById('pageTitle').textContent = titles[page];
+  document.getElementById('pageBread').textContent = breads[page];
+}
+function switchDim(el, type) {
+  document.querySelectorAll('.dim-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+</script>
+</body>
+</html>
