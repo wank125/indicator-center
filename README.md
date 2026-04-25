@@ -1,6 +1,6 @@
-# 指标中心 - 电力营销管控系统
+# 指标中心 (Indicator Center)
 
-> 面向电力交易市场的多省网一体化指标管理平台，覆盖199个电力营销指标的统一管理、配置化计算和多维分析。
+> 面向电力交易市场的多省网一体化指标管理平台，覆盖199个电力交易指标的统一管理、配置化计算和多维分析。
 
 ## 项目结构
 
@@ -34,7 +34,7 @@ indicator-center/
 
 | 层 | 技术 |
 |---|------|
-| 后端 | Spring Boot 3.x + Spring Cloud + MyBatis Plus |
+| 后端 | Spring Boot 2.7 + Spring Cloud 2021 + MyBatis Plus |
 | 前端 | Vue 3 + Element Plus + ECharts |
 | 数据库 | PostgreSQL (11个业务库 + 指标库) |
 | 缓存 | Redis |
