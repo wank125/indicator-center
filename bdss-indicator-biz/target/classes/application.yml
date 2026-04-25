@@ -1,0 +1,92 @@
+server:
+  port: 50009
+
+spring:
+  datasource:
+    dynamic:
+      primary: indicator
+      strict: false
+      datasource:
+        indicator:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_indicator_manage
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        market_analysis:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_market_analysis
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        spot_market:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_spot_market
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        transaction:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_transaction_manage
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        settlement:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_settlement_manage
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        cost:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_cost_manage
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        algorithm:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_algorithm_manage
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        group_data:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_group_data
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        basic_parameter:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_basic_parameter
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+        retail:
+          url: jdbc:postgresql://192.168.31.123:5433/bdss_retail_manage
+          username: sc-postgresql
+          password: postgres
+          driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: 10.60.64.219
+      port: 6379
+      password: password
+      database: 0
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: delFlag
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  level:
+    com.qctc.bdss.indicator: debug
