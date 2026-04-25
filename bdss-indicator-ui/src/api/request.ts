@@ -17,7 +17,6 @@ import type {
   IndicatorDef,
   TreeNode,
   CalcTaskLog,
-  CalcDetailLog,
 } from '@/types/indicator'
 
 const request = axios.create({
@@ -64,7 +63,7 @@ export function deleteDefinition(code: string): Promise<void> {
 
 // ─── 维度树 ─────────────────────────────
 export function getDimensionTree(dimType: string, tenantId?: number): Promise<TreeNode[]> {
-  return request.get('/qctc/indicator/tree', { params: { dimType, tenantId } })
+  return request.get('/qctc/indicator/dimensions/tree', { params: { dimType, tenantId } })
 }
 
 // ─── 数据查询 ───────────────────────────
@@ -101,6 +100,12 @@ export function getCalcStatus(taskId: number): Promise<CalcTaskLog> {
   return request.get(`/qctc/indicator/calc/status/${taskId}`)
 }
 
-export function getCalcLog(params: CalcLogParams): Promise<{ list: CalcDetailLog[]; total: number }> {
-  return request.get('/qctc/indicator/calc/log', { params })
+export function getCalcLog(params: CalcLogParams): Promise<{ list: CalcTaskLog[]; total: number }> {
+  return request.get('/qctc/indicator/calc/log', {
+    params: {
+      tenantId: params.tenantId,
+      page: params.pageNum || 1,
+      size: params.pageSize || 20,
+    },
+  })
 }

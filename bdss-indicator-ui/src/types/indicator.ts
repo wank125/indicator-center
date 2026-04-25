@@ -113,6 +113,7 @@ export interface CalcTriggerReq {
 }
 
 export interface CalcLogParams {
+  tenantId?: number
   tradeDate?: string
   status?: string
   calcLayer?: number
