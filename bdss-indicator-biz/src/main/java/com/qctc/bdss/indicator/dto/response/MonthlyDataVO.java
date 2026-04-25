@@ -4,10 +4,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 
 @Data
-public class DailyDataVO {
+public class MonthlyDataVO {
 
     private String indicatorCode;
 
@@ -17,14 +16,10 @@ public class DailyDataVO {
 
     private String unitName;
 
-    @JsonProperty("date")
-    private LocalDate tradeDate;
+    @JsonProperty("month")
+    private String tradeMonth;
 
     private BigDecimal value;
 
-    private BigDecimal minValue;
-
-    private BigDecimal maxValue;
-
-    private BigDecimal avgValue;
+    private BigDecimal yearCumulative;
 }

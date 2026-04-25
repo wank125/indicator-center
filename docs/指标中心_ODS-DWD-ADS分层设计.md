@@ -347,6 +347,44 @@ DISTRIBUTED BY HASH(tenant_id) BUCKETS 4
 PARTITION BY RANGE(trade_date) (
     FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
 );
+
+-- ============================================================
+-- ODS 层: 算法预测
+-- ============================================================
+
+-- 算法预测电价
+CREATE TABLE indicator_ods.ods_algo_forecast_clearing (
+    id              BIGINT,
+    tenant_id       BIGINT,
+    unit_id         VARCHAR(32),
+    trade_date      DATE,
+    time_id         INT,
+    forecast_price  DECIMAL(18,4)   COMMENT '预测电价(元/MWh)',
+    create_time     DATETIME,
+    __etl_time      DATETIME
+)
+UNIQUE KEY(id, tenant_id, trade_date, time_id)
+DISTRIBUTED BY HASH(tenant_id) BUCKETS 4
+PARTITION BY RANGE(trade_date) (
+    FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
+);
+
+-- ============================================================
+-- ODS 层: 成本管理（补充固定成本）
+-- ============================================================
+
+-- 机组月度固定成本
+CREATE TABLE indicator_ods.ods_cost_fixed_monthly (
+    id              BIGINT,
+    tenant_id       BIGINT,
+    unit_id         VARCHAR(32),
+    trade_month     VARCHAR(7)      COMMENT '月份 yyyy-MM',
+    fixed_cost      DECIMAL(18,4)   COMMENT '固定成本(元/月)',
+    create_time     DATETIME,
+    __etl_time      DATETIME
+)
+UNIQUE KEY(id, tenant_id, trade_month)
+DISTRIBUTED BY HASH(tenant_id) BUCKETS 4;
 ```
 
 ### 4.3 ODS 表汇总
@@ -363,9 +401,11 @@ PARTITION BY RANGE(trade_date) (
 | ods_sett_unit_bill_day | bdss_settlement_manage | sett_unit_bill_day | trade_date | 1 |
 | ods_bas_unit | bdss_basic_parameter | bas_unit | — (维度表) | 5 |
 | ods_cost_unit_curve | bdss_cost_manage | cost_unit_curve | trade_date | 1 |
+| ods_cost_fixed_monthly | bdss_cost_manage | cost_fixed_monthly | — (月粒度) | 1 |
 | ods_grp_unit_output | bdss_group_data | ha_ssfdjh | trade_date | 1 |
 | ods_mkt_netload | bdss_market_analysis | mkt_netload | trade_date | 1 |
-| **合计 12 张** | **7 个源库** | | | **28** |
+| ods_algo_forecast_clearing | bdss_algorithm_manage | algo_price_forecast_clearing | trade_date | 1 |
+| **合计 14 张** | **8 个源库** | | | **30** |
 
 ---
 
@@ -381,19 +421,20 @@ PARTITION BY RANGE(trade_date) (
 
 ### 5.2 DWD 表与业务域映射
 
-| DWD 表 | 业务域 (category_l1) | 指标数 | 来源 ODS |
-|--------|----------------------|--------|----------|
-| dwd_energy_detail | 电量 (35) | 35 | spot_ahead/real, txm_contract, sett_power |
-| dwd_price_detail | 电价 (33) | 33 | spot_ahead/real, txm_contract, cost |
-| dwd_fee_detail | 电费 (44) | 44 | sett_base_subject, sett_unit_bill_day |
-| dwd_margin_detail | 边际贡献 (16) | 16 | 由 fee + cost 联合计算 |
-| dwd_aux_detail | 辅助服务 (12) | 12 | sett_base_subject (科目拆分) |
-| dwd_green_detail | 绿证/绿电 (9) | 9 | 外部系统同步 |
-| dwd_capacity_detail | 容量 (6) | 6 | bas_unit, 外部 |
-| dwd_cost_detail | 成本 (4) | 4 | cost_unit_curve |
-| dwd_loadrate_detail | 负荷率/覆盖率 (10) | 10 | 由 energy + unit_param 计算 |
-| dwd_unit_param | 维度 (机组参数) | 5 | bas_unit |
-| **合计 10 张** | **12 个域全覆盖** | **199** | |
+| DWD 表 | 业务域 (category_l1) | 指标数 | 来源 ODS | 类型 |
+|--------|----------------------|--------|----------|------|
+| dwd_energy_detail | 电量 (35) | 35 | spot_ahead/real, txm_contract, sett_power | 原始 |
+| dwd_price_detail | 电价 (34) | 34 | spot_ahead/real, txm_contract, cost, algo_forecast | 原始 |
+| dwd_fee_detail | 电费 (44) | 44 | sett_base_subject, sett_unit_bill_day + 公式计算 | 混合 |
+| dwd_margin_detail | 边际贡献 (16) | 16 | 由 fee + cost 联合计算 | 计算 |
+| dwd_aux_detail | 辅助服务 (12) | 12 | sett_base_subject (科目拆分) | 原始 |
+| dwd_green_detail | 绿证/绿电 (9) | 9 | 外部系统同步 | 原始 |
+| dwd_capacity_detail | 容量 (6) | 6 | bas_unit, 外部 | 原始 |
+| dwd_cost_detail | 成本 (4) | 4 | cost_unit_curve, cost_fixed_monthly | 原始 |
+| dwd_loadrate_detail | 负荷率/覆盖率 (10) | 10 | 由 energy + unit_param 计算 | 计算 |
+| dwd_unit_param | 维度 (机组参数) | 5 | bas_unit | 原始 |
+| dwd_inter_province_detail | 省间交易 (4) | 4 | spot_inter_province_declare/result | 原始 |
+| **合计 11 张** | **12 个域全覆盖** | **199** | | |
 
 ### 5.3 DWD DDL
 
@@ -449,10 +490,6 @@ CREATE TABLE indicator_dwd.dwd_energy_detail (
     -- 竞价空间
     bidding_space   DECIMAL(18,4)   COMMENT '竞价空间(MW)',
 
-    -- 省间电量
-    int_dam_bid     DECIMAL(18,4)   COMMENT '省间日前申报(MW)',
-    int_rtm_bid     DECIMAL(18,4)   COMMENT '省间实时申报(MW)',
-
     __etl_time      DATETIME
 )
 DUPLICATE KEY(tenant_id, unit_id, trade_date, time_id)
@@ -464,7 +501,7 @@ PARTITION BY RANGE(trade_date) (
 -- ============================================================
 -- DWD 2: 电价明细表 (覆盖33个电价指标)
 -- ============================================================
--- 来源: ODS 现货出清 + 合约匹配 + 成本 + 省间结果
+-- 来源: ODS 现货出清 + 合约匹配 + 成本 + 省间结果 + 算法预测
 -- 粒度: 机组 × 交易日 × 时间点(1-96)
 CREATE TABLE indicator_dwd.dwd_price_detail (
     tenant_id       BIGINT,
@@ -486,6 +523,9 @@ CREATE TABLE indicator_dwd.dwd_price_detail (
     -- 成本价
     var_cost_price  DECIMAL(18,4)   COMMENT '单位变动成本(元/MWh)',
     benchmark_price DECIMAL(18,4)   COMMENT '基准电价(元/MWh)',
+
+    -- 算法预测
+    algo_forecast_price DECIMAL(18,4) COMMENT '算法预测电价(元/MWh)',
 
     -- 省间电价
     int_dam_price   DECIMAL(18,4)   COMMENT '省间日前电价(元/MWh)',
@@ -736,64 +776,151 @@ DISTRIBUTED BY HASH(tenant_id, unit_id) BUCKETS 8
 PARTITION BY RANGE(trade_date) (
     FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
 );
+
+-- ============================================================
+-- DWD 10: 省间交易明细表 (覆盖4个省间指标)
+-- ============================================================
+-- 来源: ODS spot_inter_province_declare + spot_inter_province_result
+-- 粒度: 省网 × 交易日 × 时间点(1-96)（省级维度，非机组级）
+-- 说明: 省间数据无 unit_id 维度，无法并入机组宽表，单独建表
+CREATE TABLE indicator_dwd.dwd_inter_province_detail (
+    tenant_id       BIGINT          COMMENT '租户ID',
+    province_code   VARCHAR(8)      COMMENT '省网编码',
+    trade_date      DATE            COMMENT '交易日期',
+    time_id         INT             COMMENT '时间点(1-96)',
+
+    -- 省间电量
+    int_dam_bid     DECIMAL(18,4)   COMMENT '省间日前申报(MW)',
+    int_rtm_bid     DECIMAL(18,4)   COMMENT '省间实时申报(MW)',
+    int_dam_energy  DECIMAL(18,4)   COMMENT '省间日前出清电量(MWh)',
+    int_rtm_energy  DECIMAL(18,4)   COMMENT '省间实时出清电量(MWh)',
+
+    -- 省间电价
+    int_dam_price   DECIMAL(18,4)   COMMENT '省间日前电价(元/MWh)',
+    int_rtm_price   DECIMAL(18,4)   COMMENT '省间实时电价(元/MWh)',
+
+    __etl_time      DATETIME
+)
+DUPLICATE KEY(tenant_id, province_code, trade_date, time_id)
+DISTRIBUTED BY HASH(tenant_id, province_code) BUCKETS 8
+PARTITION BY RANGE(trade_date) (
+    FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
+);
 ```
 
-### 5.4 DWD 表汇总 (10张，覆盖199指标)
+### 5.4 DWD/ADS 分层边界
 
-| # | DWD 表 | 粒度 | 分区 | 覆盖域 | 指标数 |
-|---|--------|------|------|--------|--------|
-| 1 | dwd_unit_param | 机组 | — | 维度 | 5 |
-| 2 | dwd_energy_detail | 机组×96点 | 月 | 电量 | 35 |
-| 3 | dwd_price_detail | 机组×96点 | 月 | 电价 | 33 |
-| 4 | dwd_fee_detail | 机组×96点 | 月 | 电费 | 44 |
-| 5 | dwd_margin_detail | 机组×96点 | 月 | 边际贡献 | 16 |
-| 6 | dwd_aux_detail | 机组×日 | 月 | 辅助服务 | 12 |
-| 7 | dwd_green_detail | 机组×月 | — | 绿证/绿电 | 9 |
-| 8 | dwd_capacity_detail | 机组×月 | — | 容量 | 6 |
-| 9 | dwd_cost_detail | 机组×96点 | 月 | 成本 | 4 |
-| 10 | dwd_loadrate_detail | 机组×日 | 月 | 负荷率/覆盖率 | 10 |
+> **分层原则**: DWD 层只存放 ODS 原始数据的标准化宽表，不含公式计算派生值。
 
-### 5.5 ODS → DWD 转换逻辑
+| 分类 | DWD 表 | 说明 |
+|------|--------|------|
+| **原始 DWD (ODS映射)** | dwd_unit_param, dwd_energy_detail, dwd_price_detail, dwd_aux_detail, dwd_green_detail, dwd_capacity_detail, dwd_cost_detail, dwd_inter_province_detail | 字段全部来自 ODS，零计算 |
+| **计算 DWD (→ 后续迁移至 ADS)** | dwd_fee_detail, dwd_margin_detail, dwd_loadrate_detail | 含公式引擎计算派生字段，P0 阶段暂时放在 DWD，P1 阶段迁移到 ADS 层 |
 
-#### dwd_energy_detail (电量宽表)
+**计算表字段溯源**:
+
+| 表 | ODS 原始字段 | 公式计算字段 |
+|----|------------|-------------|
+| dwd_fee_detail | base_fee, mlt_fee, sett_total_fee | dam_full_fee, rtm_full_fee, dam_dev_*_fee, cfd_*_fee, total_electric_fee, spot_full_fee |
+| dwd_margin_detail | (无) | total_margin, unit_margin, margin_rate, contract_margin, spot_margin 等 |
+| dwd_loadrate_detail | (无) | load_rate, peak_load_rate, valley_load_rate, contract_coverage, spot_ratio 等 |
+
+**P0 策略**: 保持现有 DDL 不变，公式引擎计算结果写入 dwd_fee/margin/loadrate，先跑通链路。
+**P1 策略**: 将计算字段全部迁移到 `ads_indicator_timeseries`，dwd_fee/margin/loadrate 只保留 ODS 原始字段。
+
+### 5.5 DWD 表汇总 (11张，覆盖199指标)
+
+| # | DWD 表 | 粒度 | 分区 | 覆盖域 | 指标数 | 类型 |
+|---|--------|------|------|--------|--------|------|
+| 1 | dwd_unit_param | 机组 | — | 维度 | 5 | 原始 |
+| 2 | dwd_energy_detail | 机组×96点 | 月 | 电量 | 35 | 原始 |
+| 3 | dwd_price_detail | 机组×96点 | 月 | 电价 | 34 | 原始 |
+| 4 | dwd_fee_detail | 机组×96点 | 月 | 电费 | 44 | 混合 |
+| 5 | dwd_margin_detail | 机组×96点 | 月 | 边际贡献 | 16 | 计算 |
+| 6 | dwd_aux_detail | 机组×日 | 月 | 辅助服务 | 12 | 原始 |
+| 7 | dwd_green_detail | 机组×月 | — | 绿证/绿电 | 9 | 原始 |
+| 8 | dwd_capacity_detail | 机组×月 | — | 容量 | 6 | 原始 |
+| 9 | dwd_cost_detail | 机组×96点 | 月 | 成本 | 4 | 原始 |
+| 10 | dwd_loadrate_detail | 机组×日 | 月 | 负荷率/覆盖率 | 10 | 计算 |
+| 11 | dwd_inter_province_detail | 省网×96点 | 月 | 省间交易 | 4 | 原始 |
+
+### 5.6 ODS → DWD 转换逻辑
+
+> **改进**: 原设计使用 6 表 FULL OUTER JOIN，性能风险大且可维护性差。
+> 改为分步写入：以最完整的维度表为基础，逐步补充其他来源字段。
+> 利用 Doris Aggregate Key 模型自动合并同 key 行。
+
+#### dwd_energy_detail (电量宽表) — 分步写入
 
 ```sql
--- 6个ODS表 FULL OUTER JOIN → 1张电量宽表
+-- Step 1: 以日前出清为基础表（最完整的机组×时间维度）
 INSERT INTO indicator_dwd.dwd_energy_detail
-SELECT
-    COALESCE(a.tenant_id, r.tenant_id, s.tenant_id, c.tenant_id, g.tenant_id, m.tenant_id) AS tenant_id,
-    COALESCE(a.unit_id, r.unit_id, s.unit_id, c.unit_id, g.unit_id) AS unit_id,
-    u.unit_name, u.plant_id, u.group_code,
-    COALESCE(a.trade_date, r.trade_date, s.trade_date, c.trade_date, g.trade_date) AS trade_date,
-    COALESCE(a.time_id, r.time_id, s.time_id, c.time_id, g.time_id) AS time_id,
-    c.base_energy,
-    c.mlt_energy,
-    a.power    AS dam_energy,
-    r.power    AS rtm_energy,
-    s.online_energy,
-    g.actual_output,
-    m.net_load AS bidding_space,
-    NULL AS int_dam_bid,   -- 省间无机组维度，需单独处理
-    NULL AS int_rtm_bid,
-    NOW() AS __etl_time
-FROM indicator_ods.ods_spot_ahead_trade a
-FULL OUTER JOIN indicator_ods.ods_spot_real_trade r
-    ON a.tenant_id=r.tenant_id AND a.unit_id=r.unit_id AND a.trade_date=r.trade_date AND a.time_id=r.time_id
-FULL OUTER JOIN indicator_ods.ods_sett_power_hour_unit s
-    ON COALESCE(a.tenant_id,r.tenant_id)=s.tenant_id AND COALESCE(a.unit_id,r.unit_id)=s.unit_id
-    AND COALESCE(a.trade_date,r.trade_date)=s.trade_date AND COALESCE(a.time_id,r.time_id)=s.time_id
-FULL OUTER JOIN indicator_ods.ods_txm_contract_match_month c
-    ON COALESCE(a.tenant_id,r.tenant_id)=c.tenant_id AND COALESCE(a.unit_id,r.unit_id)=c.unit_id
-    AND COALESCE(a.trade_date,r.trade_date)=c.trade_date AND COALESCE(a.time_id,r.time_id)=c.time_id
-FULL OUTER JOIN indicator_ods.ods_grp_unit_output g
-    ON COALESCE(a.tenant_id,r.tenant_id)=g.tenant_id AND COALESCE(a.unit_id,r.unit_id)=g.unit_id
-    AND COALESCE(a.trade_date,r.trade_date)=g.trade_date AND COALESCE(a.time_id,r.time_id)=g.time_id
-FULL OUTER JOIN indicator_ods.ods_mkt_netload m
-    ON COALESCE(a.tenant_id,r.tenant_id)=m.tenant_id
-    AND COALESCE(a.trade_date,r.trade_date)=m.trade_date AND COALESCE(a.time_id,r.time_id)=m.time_id
-LEFT JOIN indicator_dwd.dwd_unit_param u
-    ON COALESCE(a.tenant_id,r.tenant_id)=u.tenant_id AND COALESCE(a.unit_id,r.unit_id)=u.unit_id
-WHERE COALESCE(a.trade_date, r.trade_date) = '${calc_date}';
+    (tenant_id, unit_id, trade_date, time_id, dam_energy, __etl_time)
+SELECT tenant_id, unit_id, trade_date, time_id, power, NOW()
+FROM indicator_ods.ods_spot_ahead_trade
+WHERE trade_date = '${calc_date}';
+
+-- Step 2: 补充实时出清
+INSERT INTO indicator_dwd.dwd_energy_detail
+    (tenant_id, unit_id, trade_date, time_id, rtm_energy, __etl_time)
+SELECT tenant_id, unit_id, trade_date, time_id, power, NOW()
+FROM indicator_ods.ods_spot_real_trade
+WHERE trade_date = '${calc_date}';
+
+-- Step 3: 补充上网电量
+INSERT INTO indicator_dwd.dwd_energy_detail
+    (tenant_id, unit_id, trade_date, time_id, online_energy, __etl_time)
+SELECT tenant_id, unit_id, trade_date, time_id, online_energy, NOW()
+FROM indicator_ods.ods_sett_power_hour_unit
+WHERE trade_date = '${calc_date}';
+
+-- Step 4: 补充合约电量
+INSERT INTO indicator_dwd.dwd_energy_detail
+    (tenant_id, unit_id, trade_date, time_id, base_energy, mlt_energy, __etl_time)
+SELECT tenant_id, unit_id, trade_date, time_id, base_energy, mlt_energy, NOW()
+FROM indicator_ods.ods_txm_contract_match_month
+WHERE trade_date = '${calc_date}';
+
+-- Step 5: 补充实际出力
+INSERT INTO indicator_dwd.dwd_energy_detail
+    (tenant_id, unit_id, trade_date, time_id, actual_output, __etl_time)
+SELECT tenant_id, unit_id, trade_date, time_id, actual_output, NOW()
+FROM indicator_ods.ods_grp_unit_output
+WHERE trade_date = '${calc_date}';
+
+-- Step 6: 补充竞价空间 + 关联维度
+INSERT INTO indicator_dwd.dwd_energy_detail
+    (tenant_id, unit_id, trade_date, time_id, bidding_space, __etl_time)
+SELECT tenant_id, unit_id, trade_date, time_id, net_load, NOW()
+FROM indicator_ods.ods_mkt_netload
+WHERE trade_date = '${calc_date}';
+
+-- Step 7: 关联机组维度信息（unit_name, plant_id, group_code）
+UPDATE indicator_dwd.dwd_energy_detail e
+SET unit_name = u.unit_name, plant_id = u.plant_id, group_code = u.group_code
+FROM indicator_dwd.dwd_unit_param u
+WHERE e.tenant_id = u.tenant_id AND e.unit_id = u.unit_id
+  AND e.trade_date = '${calc_date}';
+```
+
+> **注意**: 分步写入需将 dwd_energy_detail 的模型改为 **Aggregate Key**，
+> 对相同 (tenant_id, unit_id, trade_date, time_id) 的多次 INSERT 自动合并。
+
+#### dwd_inter_province_detail (省间交易) — 单独写入
+
+```sql
+-- 省间数据为省级粒度，写入独立的省间宽表
+INSERT INTO indicator_dwd.dwd_inter_province_detail
+    (tenant_id, province_code, trade_date, time_id, int_dam_bid, int_rtm_bid, __etl_time)
+SELECT tenant_id, province_code, trade_date, time_id, dam_bid_output, rtm_bid_output, NOW()
+FROM indicator_ods.ods_spot_inter_province_declare
+WHERE trade_date = '${calc_date}';
+
+INSERT INTO indicator_dwd.dwd_inter_province_detail
+    (tenant_id, province_code, trade_date, time_id, int_dam_price, int_rtm_price, __etl_time)
+SELECT tenant_id, province_code, trade_date, time_id, dam_price, rtm_price, NOW()
+FROM indicator_ods.ods_spot_inter_province_result
+WHERE trade_date = '${calc_date}';
 ```
 
 #### dwd_fee_detail (电费宽表)
@@ -950,9 +1077,9 @@ public class DataExtractService {
     public Map<String, BigDecimal> loadDwdData(String indicatorCode,
                                                 LocalDate date, String unitId,
                                                 Long tenantId) {
-        // 直接查询 dwd_clearing_detail 等宽表
+        // 直接查询 dwd_energy_detail 等宽表
         String sql = "SELECT dam_energy, dam_price, rtm_energy, rtm_price, online_energy " +
-                     "FROM indicator_dwd.dwd_clearing_detail " +
+                     "FROM indicator_dwd.dwd_energy_detail " +
                      "WHERE tenant_id = ? AND unit_id = ? AND trade_date = ? AND time_id = ?";
         return dorisJdbcTemplate.queryForObject(sql, ...);
     }
@@ -1060,12 +1187,17 @@ public CalcTaskLog calcDaily(LocalDate date, Long tenantId, String singleCode) {
 
 ## 九、数据量估算
 
+> 以下估算基于：12台机组/省网，90个P0指标，96个时间点。
+
 ### 单个省网、1年数据量
 
 | 表 | 行数/天 | 行数/年 | 单行大小 | 年存储 |
 |----|---------|---------|----------|--------|
-| dwd_clearing_detail | 机组数×96 ≈ 1,152 | 420,480 | 120B | ~50MB |
-| dwd_contract_detail | 1,152 | 420,480 | 100B | ~42MB |
+| dwd_energy_detail | 12×96 = 1,152 | 420,480 | 120B | ~50MB |
+| dwd_price_detail | 1,152 | 420,480 | 100B | ~42MB |
+| dwd_fee_detail | 1,152 | 420,480 | 150B | ~63MB |
+| dwd_cost_detail | 1,152 | 420,480 | 60B | ~25MB |
+| dwd_inter_province_detail | 1×96 = 96 | 35,040 | 80B | ~2.8MB |
 | ads_indicator_timeseries | 90×96×12 = 103,680 | 37.8M | 80B | ~3GB |
 | ads_indicator_daily | 90×12 = 1,080 | 394,200 | 80B | ~32MB |
 | ads_indicator_monthly | 90×12 = 1,080 | 12,960 | 60B | ~0.8MB |
@@ -1074,12 +1206,41 @@ public CalcTaskLog calcDaily(LocalDate date, Long tenantId, String singleCode) {
 
 | 表 | 总行数 | 压缩后存储 |
 |----|--------|-----------|
-| ODS 全量 | ~50M | ~5GB |
-| DWD 全量 | ~40M | ~4GB |
-| ADS 全量 | ~1.2B | ~30GB |
+| ODS 全量 (14张) | ~50M | ~5GB |
+| DWD 全量 (11张) | ~40M | ~4GB |
+| ADS 全量 (3张) | ~1.2B | ~30GB |
 | **合计** | **~1.3B** | **~40GB** |
 
 Doris 列存储压缩比约 3:1，40GB 磁盘完全可承受。
+
+---
+
+## 九B、PostgreSQL / Doris 双写策略
+
+> 引入 Doris 后，指标数据存储面临 PostgreSQL 和 Doris 双写问题，需明确策略。
+
+### 策略：PostgreSQL 仅保留元数据，指标数据全部迁移到 Doris
+
+| 数据类别 | 存储位置 | 说明 |
+|---------|---------|------|
+| 指标定义 (ind_indicator_def) | PostgreSQL | 元数据，需要事务，低频变更 |
+| 公式配置 (ind_calc_formula) | PostgreSQL | 元数据，需要事务 |
+| 数据源映射 (ind_data_source) | PostgreSQL | 元数据，改为映射到 DWD 表 |
+| 维度 (ind_dimension 等) | PostgreSQL | 元数据，需要事务 |
+| 计算日志 (ind_calc_task/detail_log) | PostgreSQL | 运行日志，需要事务 |
+| **分时数据 (ind_data_timeseries)** | **废弃 → ads_indicator_timeseries (Doris)** | 不再双写 |
+| **日数据 (ind_data_daily)** | **废弃 → ads_indicator_daily (Doris)** | 不再双写 |
+| **月数据 (ind_data_monthly)** | **废弃 → ads_indicator_monthly (Doris)** | 不再双写 |
+
+**迁移步骤**：
+1. P0 阶段：Java 服务改为查询 Doris ADS 层，PostgreSQL 的 `ind_data_*` 表停止写入
+2. 保留 PostgreSQL 的 `ind_data_*` DDL 不删除，作为回滚兜底
+3. Java 查询层通过 `@DS("doris")` 切换数据源，MyBatis Mapper 的 SQL 语法保持兼容（Doris 兼容 MySQL 协议）
+
+**数据源类型说明**：
+- 现有业务库均为 **PostgreSQL** (192.168.31.123:5433)
+- Doris 使用 **MySQL 协议** (端口 9030)
+- ODS 同步方式：从 PostgreSQL 导出 → Stream Load 写入 Doris（非 Flink CDC MySQL 连接器）
 
 ---
 
@@ -1089,15 +1250,15 @@ Doris 列存储压缩比约 3:1，40GB 磁盘完全可承受。
 
 - [ ] 部署 Doris FE + BE (Docker Compose)
 - [ ] 创建 indicator_ods / indicator_dwd / indicator_ads 三个库
-- [ ] 执行 ODS DDL (12张表)
-- [ ] 执行 DWD DDL (6张表)
+- [ ] 执行 ODS DDL (14张表)
+- [ ] 执行 DWD DDL (11张表)
 - [ ] 执行 ADS DDL (3张表)
 - [ ] 验证 Stream Load 导入
 
 ### Phase 2: 数据同步 (3天)
 
-- [ ] 编写 12 个 ODS 表的同步脚本 (MySQL → Doris)
-- [ ] 编写 ODS → DWD 转换 SQL (6条)
+- [ ] 编写 14 个 ODS 表的同步脚本 (PostgreSQL → Doris)
+- [ ] 编写 ODS → DWD 转换 SQL (分步写入)
 - [ ] 定时调度: 每日凌晨 1:00 执行同步
 - [ ] 验证: ODS + DWD 数据完整
 

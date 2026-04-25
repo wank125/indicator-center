@@ -1,5 +1,6 @@
 package com.qctc.bdss.indicator.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -16,6 +17,7 @@ public class TimeseriesDataVO {
 
     private String unitName;
 
+    @JsonProperty("date")
     private LocalDate tradeDate;
 
     private Integer timePoint;
