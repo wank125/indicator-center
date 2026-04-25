@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @TableName("ind_dimension")
@@ -40,4 +41,7 @@ public class Dimension {
 
     @TableLogic
     private Integer delFlag;
+
+    @TableField(exist = false)
+    private List<Dimension> children;
 }

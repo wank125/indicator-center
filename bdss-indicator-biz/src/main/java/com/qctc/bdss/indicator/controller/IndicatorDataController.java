@@ -1,7 +1,7 @@
 package com.qctc.bdss.indicator.controller;
 
 import com.qctc.bdss.indicator.dto.R;
-import com.qctc.bdss.indicator.entity.IndDataTimeseries;
+import com.qctc.bdss.indicator.dto.response.TimeseriesDataVO;
 import com.qctc.bdss.indicator.service.IndicatorDataService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -18,7 +18,7 @@ public class IndicatorDataController {
     private final IndicatorDataService indicatorDataService;
 
     @GetMapping("/timeseries")
-    public R<List<IndDataTimeseries>> timeseries(
+    public R<List<TimeseriesDataVO>> timeseries(
             @RequestParam String indicatorCode,
             @RequestParam(required = false) String unitId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
