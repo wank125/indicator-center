@@ -1,0 +1,66 @@
+:root {
+  --color-primary: #1890ff;
+  --color-sidebar: #001529;
+  --color-bg: #f0f2f5;
+  --color-card: #ffffff;
+  --color-border: #f0f0f0;
+  --color-success: #52c41a;
+  --color-error: #ff4d4f;
+  --color-warning: #faad14;
+  --color-deviation-pos: #52c41a;
+  --color-deviation-neg: #ff4d4f;
+
+  --radius-card: 8px;
+  --radius-btn: 4px;
+  --spacing-section: 16px;
+  --spacing-component: 12px;
+  --spacing-inner: 8px;
+
+  --font-kpi: 22px;
+  --font-title: 16px;
+  --font-body: 14px;
+  --font-aux: 12px;
+  --font-note: 11px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: var(--font-body);
+  color: #333;
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+
+// 通用工具类
+.page-container {
+  padding: var(--spacing-section);
+}
+
+.card-section {
+  background: var(--color-card);
+  border-radius: var(--radius-card);
+  padding: var(--spacing-section);
+  margin-bottom: var(--spacing-component);
+}
+
+.section-title {
+  font-size: var(--font-title);
+  font-weight: 600;
+  margin-bottom: var(--spacing-component);
+}
+
+.text-success { color: var(--color-success); }
+.text-error { color: var(--color-error); }
+.text-warning { color: var(--color-warning); }
+.text-primary { color: var(--color-primary); }
