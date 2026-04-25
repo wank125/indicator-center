@@ -369,47 +369,104 @@ PARTITION BY RANGE(trade_date) (
 
 ---
 
-## 五、DWD 层设计 (Data Warehouse Detail)
+## 五、DWD 层设计 (Data Warehouse Detail) — 按业务域建模
 
 ### 5.1 设计原则
 
-- **统一语义**: 将 ODS 的不同字段名标准化为 `energy`/`price`/`fee`/`capacity`
-- **统一粒度**: 每条记录 = 一个机组 × 一个时间点 × 一个交易日
-- **维度关联**: 关联 `ods_bas_unit` 补充 plant_id, group_code
-- **去除冗余**: 合并同源多指标为一张宽表
+- **按业务域建模**: 对齐 199 指标的 12 个 category_l1，每域一张宽表
+- **统一粒度**: 每条记录 = 一个机组 × 一个时间点(1-96) × 一个交易日
+- **维度关联**: 所有 DWD 表通过 `dwd_unit_param` 补充 plant_id, group_code
+- **标准化字段**: 统一用 `energy`/`price`/`fee`/`capacity`/`rate` 语义
+- **覆盖全量**: 10 张 DWD 表覆盖 199 个指标全部所需原始数据
 
-### 5.2 DWD 表设计
+### 5.2 DWD 表与业务域映射
+
+| DWD 表 | 业务域 (category_l1) | 指标数 | 来源 ODS |
+|--------|----------------------|--------|----------|
+| dwd_energy_detail | 电量 (35) | 35 | spot_ahead/real, txm_contract, sett_power |
+| dwd_price_detail | 电价 (33) | 33 | spot_ahead/real, txm_contract, cost |
+| dwd_fee_detail | 电费 (44) | 44 | sett_base_subject, sett_unit_bill_day |
+| dwd_margin_detail | 边际贡献 (16) | 16 | 由 fee + cost 联合计算 |
+| dwd_aux_detail | 辅助服务 (12) | 12 | sett_base_subject (科目拆分) |
+| dwd_green_detail | 绿证/绿电 (9) | 9 | 外部系统同步 |
+| dwd_capacity_detail | 容量 (6) | 6 | bas_unit, 外部 |
+| dwd_cost_detail | 成本 (4) | 4 | cost_unit_curve |
+| dwd_loadrate_detail | 负荷率/覆盖率 (10) | 10 | 由 energy + unit_param 计算 |
+| dwd_unit_param | 维度 (机组参数) | 5 | bas_unit |
+| **合计 10 张** | **12 个域全覆盖** | **199** | |
+
+### 5.3 DWD DDL
 
 ```sql
 -- ============================================================
--- DWD: 统一出清明细表 (日前+实时合并)
+-- DWD: 机组参数维度表 (所有DWD表的外键)
 -- ============================================================
-CREATE TABLE indicator_dwd.dwd_clearing_detail (
+CREATE TABLE indicator_dwd.dwd_unit_param (
     tenant_id       BIGINT          COMMENT '租户ID',
     unit_id         VARCHAR(32)     COMMENT '机组ID',
     unit_name       VARCHAR(64)     COMMENT '机组名称',
     plant_id        VARCHAR(32)     COMMENT '电厂ID',
+    plant_name      VARCHAR(64)     COMMENT '电厂名称',
     group_code      VARCHAR(32)     COMMENT '二级公司编码',
+    group_name      VARCHAR(64)     COMMENT '二级公司名称',
+    province_code   VARCHAR(8)      COMMENT '省网编码',
+    rated_capacity  DECIMAL(10,2)   COMMENT '额定容量(MW)',
+    min_output      DECIMAL(10,2)   COMMENT '最小技术出力(MW)',
+    aux_rate        DECIMAL(5,4)    COMMENT '厂用电率',
+    installed_cap   DECIMAL(10,2)   COMMENT '装机容量(MW)',
+    effective_cap   DECIMAL(10,2)   COMMENT '有效容量(MW)',
+    __etl_time      DATETIME
+)
+UNIQUE KEY(tenant_id, unit_id)
+DISTRIBUTED BY HASH(tenant_id) BUCKETS 4;
+
+-- ============================================================
+-- DWD 1: 电量明细表 (覆盖35个电量指标)
+-- ============================================================
+-- 来源: ODS 现货出清 + 合约匹配 + 上网电量 + 省间申报 + 集团发电 + 市场分析
+-- 粒度: 机组 × 交易日 × 时间点(1-96)
+CREATE TABLE indicator_dwd.dwd_energy_detail (
+    tenant_id       BIGINT          COMMENT '租户ID',
+    unit_id         VARCHAR(32)     COMMENT '机组ID',
+    unit_name       VARCHAR(64)     COMMENT '机组名称',
+    plant_id        VARCHAR(32)     COMMENT '电厂ID',
+    group_code      VARCHAR(32)     COMMENT '二级公司',
     trade_date      DATE            COMMENT '交易日期',
     time_id         INT             COMMENT '时间点(1-96)',
-    dam_energy      DECIMAL(18,4)   COMMENT '日前出清电量',
-    dam_price       DECIMAL(18,4)   COMMENT '日前出清电价',
-    rtm_energy      DECIMAL(18,4)   COMMENT '实时出清电量',
-    rtm_price       DECIMAL(18,4)   COMMENT '实时出清电价',
-    online_energy   DECIMAL(18,4)   COMMENT '上网电量',
+
+    -- 中长期电量
+    base_energy     DECIMAL(18,4)   COMMENT '基数电量(MWh)',
+    mlt_energy      DECIMAL(18,4)   COMMENT '中长期电量(MWh)',
+
+    -- 现货电量
+    dam_energy      DECIMAL(18,4)   COMMENT '日前出清电量(MWh)',
+    rtm_energy      DECIMAL(18,4)   COMMENT '实时出清电量(MWh)',
+
+    -- 物理电量
+    online_energy   DECIMAL(18,4)   COMMENT '上网电量(MWh)',
+    actual_output   DECIMAL(18,4)   COMMENT '实际出力(MW)',
+
+    -- 竞价空间
+    bidding_space   DECIMAL(18,4)   COMMENT '竞价空间(MW)',
+
+    -- 省间电量
+    int_dam_bid     DECIMAL(18,4)   COMMENT '省间日前申报(MW)',
+    int_rtm_bid     DECIMAL(18,4)   COMMENT '省间实时申报(MW)',
+
     __etl_time      DATETIME
 )
 DUPLICATE KEY(tenant_id, unit_id, trade_date, time_id)
 DISTRIBUTED BY HASH(tenant_id, unit_id) BUCKETS 16
 PARTITION BY RANGE(trade_date) (
     FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
-)
-PROPERTIES ("replication_num" = "1");
+);
 
 -- ============================================================
--- DWD: 合约明细表
+-- DWD 2: 电价明细表 (覆盖33个电价指标)
 -- ============================================================
-CREATE TABLE indicator_dwd.dwd_contract_detail (
+-- 来源: ODS 现货出清 + 合约匹配 + 成本 + 省间结果
+-- 粒度: 机组 × 交易日 × 时间点(1-96)
+CREATE TABLE indicator_dwd.dwd_price_detail (
     tenant_id       BIGINT,
     unit_id         VARCHAR(32),
     unit_name       VARCHAR(64),
@@ -417,11 +474,107 @@ CREATE TABLE indicator_dwd.dwd_contract_detail (
     group_code      VARCHAR(32),
     trade_date      DATE,
     time_id         INT,
-    base_energy     DECIMAL(18,4)   COMMENT '基数电量',
-    base_price      DECIMAL(18,4)   COMMENT '基数电价',
-    mlt_energy      DECIMAL(18,4)   COMMENT '中长期电量',
-    mlt_price       DECIMAL(18,4)   COMMENT '中长期电价',
-    mlt_fee         DECIMAL(18,4)   COMMENT '中长期电费',
+
+    -- 中长期电价
+    base_price      DECIMAL(18,4)   COMMENT '基数电价(元/MWh)',
+    mlt_price       DECIMAL(18,4)   COMMENT '中长期电价(元/MWh)',
+
+    -- 现货电价
+    dam_price       DECIMAL(18,4)   COMMENT '日前出清电价(元/MWh)',
+    rtm_price       DECIMAL(18,4)   COMMENT '实时出清电价(元/MWh)',
+
+    -- 成本价
+    var_cost_price  DECIMAL(18,4)   COMMENT '单位变动成本(元/MWh)',
+    benchmark_price DECIMAL(18,4)   COMMENT '基准电价(元/MWh)',
+
+    -- 省间电价
+    int_dam_price   DECIMAL(18,4)   COMMENT '省间日前电价(元/MWh)',
+    int_rtm_price   DECIMAL(18,4)   COMMENT '省间实时电价(元/MWh)',
+
+    __etl_time      DATETIME
+)
+DUPLICATE KEY(tenant_id, unit_id, trade_date, time_id)
+DISTRIBUTED BY HASH(tenant_id, unit_id) BUCKETS 16
+PARTITION BY RANGE(trade_date) (
+    FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
+);
+
+-- ============================================================
+-- DWD 3: 电费明细表 (覆盖44个电费指标)
+-- ============================================================
+-- 来源: ODS 合约电费 + 结算科目 + 结算日账单 + 计算层派生
+-- 粒度: 机组 × 交易日 × 时间点(1-96)
+CREATE TABLE indicator_dwd.dwd_fee_detail (
+    tenant_id       BIGINT,
+    unit_id         VARCHAR(32),
+    unit_name       VARCHAR(64),
+    plant_id        VARCHAR(32),
+    group_code      VARCHAR(32),
+    trade_date      DATE,
+    time_id         INT,
+
+    -- 合约电费
+    base_fee        DECIMAL(18,4)   COMMENT '基数电费(元)',
+    mlt_fee         DECIMAL(18,4)   COMMENT '中长期电费(元)',
+
+    -- 现货电费 (由 energy×price 计算)
+    dam_full_fee    DECIMAL(18,4)   COMMENT '日前全量电费(元)',
+    rtm_full_fee    DECIMAL(18,4)   COMMENT '实时全量电费(元)',
+
+    -- 偏差电费
+    dam_dev_pos_fee DECIMAL(18,4)   COMMENT '日前正偏差电费(元)',
+    dam_dev_neg_fee DECIMAL(18,4)   COMMENT '日前负偏差电费(元)',
+    rtm_dev_pos_fee DECIMAL(18,4)   COMMENT '实时正偏差电费(元)',
+    rtm_dev_neg_fee DECIMAL(18,4)   COMMENT '实时负偏差电费(元)',
+
+    -- 差价合约
+    cfd_long_fee    DECIMAL(18,4)   COMMENT '差价合约多头(元)',
+    cfd_short_fee   DECIMAL(18,4)   COMMENT '差价合约空头(元)',
+
+    -- 汇总
+    total_electric_fee DECIMAL(18,4) COMMENT '总电费(元)',
+    spot_full_fee   DECIMAL(18,4)   COMMENT '现货总电费(元)',
+
+    -- 结算
+    sett_total_fee  DECIMAL(18,4)   COMMENT '结算总电费(元)',
+
+    __etl_time      DATETIME
+)
+DUPLICATE KEY(tenant_id, unit_id, trade_date, time_id)
+DISTRIBUTED BY HASH(tenant_id, unit_id) BUCKETS 16
+PARTITION BY RANGE(trade_date) (
+    FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
+);
+
+-- ============================================================
+-- DWD 4: 边际贡献明细表 (覆盖16个边际贡献指标)
+-- ============================================================
+-- 来源: 由 dwd_fee_detail + dwd_price_detail + dwd_cost_detail 联合计算
+-- 粒度: 机组 × 交易日 × 时间点(1-96)
+CREATE TABLE indicator_dwd.dwd_margin_detail (
+    tenant_id       BIGINT,
+    unit_id         VARCHAR(32),
+    unit_name       VARCHAR(64),
+    plant_id        VARCHAR(32),
+    group_code      VARCHAR(32),
+    trade_date      DATE,
+    time_id         INT,
+
+    -- 变动成本
+    var_cost        DECIMAL(18,4)   COMMENT '变动成本(元)',
+    var_cost_price  DECIMAL(18,4)   COMMENT '单位变动成本(元/MWh)',
+
+    -- 边际贡献
+    total_margin    DECIMAL(18,4)   COMMENT '总边际贡献(元)',
+    unit_margin     DECIMAL(18,4)   COMMENT '单位边际贡献(元/MWh)',
+    margin_rate     DECIMAL(18,4)   COMMENT '边际贡献率(%)',
+
+    -- 分项边际贡献
+    contract_margin DECIMAL(18,4)   COMMENT '合约边际贡献(元)',
+    spot_margin     DECIMAL(18,4)   COMMENT '现货边际贡献(元)',
+    dam_margin      DECIMAL(18,4)   COMMENT '日前边际贡献(元)',
+    rtm_margin      DECIMAL(18,4)   COMMENT '实时边际贡献(元)',
+
     __etl_time      DATETIME
 )
 DUPLICATE KEY(tenant_id, unit_id, trade_date, time_id)
@@ -431,41 +584,35 @@ PARTITION BY RANGE(trade_date) (
 );
 
 -- ============================================================
--- DWD: 机组参数维度表 (SCD 缓变维度)
+-- DWD 5: 辅助服务明细表 (覆盖12个辅助服务指标)
 -- ============================================================
-CREATE TABLE indicator_dwd.dwd_unit_param (
-    tenant_id       BIGINT,
-    unit_id         VARCHAR(32),
-    unit_name       VARCHAR(64),
-    plant_id        VARCHAR(32),
-    plant_name      VARCHAR(64),
-    group_code      VARCHAR(32),
-    group_name      VARCHAR(64),
-    rated_capacity  DECIMAL(10,2),
-    min_output      DECIMAL(10,2),
-    aux_rate        DECIMAL(5,4),
-    installed_cap   DECIMAL(10,2),
-    effective_cap   DECIMAL(10,2),
-    __etl_time      DATETIME
-)
-UNIQUE KEY(tenant_id, unit_id)
-DISTRIBUTED BY HASH(tenant_id) BUCKETS 4;
-
--- ============================================================
--- DWD: 结算费用明细表
--- ============================================================
-CREATE TABLE indicator_dwd.dwd_settlement_detail (
+-- 来源: ODS sett_base_subject (按科目拆分)
+-- 粒度: 机组 × 交易日
+CREATE TABLE indicator_dwd.dwd_aux_detail (
     tenant_id       BIGINT,
     unit_id         VARCHAR(32),
     unit_name       VARCHAR(64),
     plant_id        VARCHAR(32),
     group_code      VARCHAR(32),
     trade_date      DATE,
-    aux_assess_fee  DECIMAL(18,4)   COMMENT '辅助考核费',
-    aux_return_fee  DECIMAL(18,4)   COMMENT '辅助返还费',
-    aux_share_fee   DECIMAL(18,4)   COMMENT '辅助分摊费',
-    aux_compensate_fee DECIMAL(18,4) COMMENT '辅助补偿费',
-    total_fee       DECIMAL(18,4)   COMMENT '总电费',
+
+    -- 调频
+    freq_clearing_energy DECIMAL(18,4) COMMENT '调频出清电量(MWh)',
+    freq_assess_fee DECIMAL(18,4)  COMMENT '调频考核费(元)',
+    freq_return_fee DECIMAL(18,4)  COMMENT '调频返还费(元)',
+
+    -- 备用
+    reserve_clearing_energy DECIMAL(18,4) COMMENT '备用出清电量(MWh)',
+    reserve_assess_fee DECIMAL(18,4) COMMENT '备用考核费(元)',
+    reserve_return_fee DECIMAL(18,4) COMMENT '备用返还费(元)',
+
+    -- 汇总
+    aux_total_assess DECIMAL(18,4) COMMENT '辅助考核总费(元)',
+    aux_total_return DECIMAL(18,4) COMMENT '辅助返还总费(元)',
+    aux_total_share  DECIMAL(18,4) COMMENT '辅助分摊总费(元)',
+    aux_total_compensate DECIMAL(18,4) COMMENT '辅助补偿总费(元)',
+    aux_net_fee      DECIMAL(18,4) COMMENT '辅助服务净收入(元)',
+
     __etl_time      DATETIME
 )
 DUPLICATE KEY(tenant_id, unit_id, trade_date)
@@ -475,34 +622,78 @@ PARTITION BY RANGE(trade_date) (
 );
 
 -- ============================================================
--- DWD: 省间交易明细
+-- DWD 6: 绿色权益明细表 (覆盖9个绿证/绿电指标)
 -- ============================================================
-CREATE TABLE indicator_dwd.dwd_inter_province_detail (
+-- 来源: 外部系统同步 (绿证交易平台)
+-- 粒度: 机组 × 月
+CREATE TABLE indicator_dwd.dwd_green_detail (
     tenant_id       BIGINT,
-    trade_date      DATE,
-    time_id         INT,
-    province_code   VARCHAR(8),
-    dam_bid_output  DECIMAL(18,4),
-    rtm_bid_output  DECIMAL(18,4),
-    dam_price       DECIMAL(18,4),
-    rtm_price       DECIMAL(18,4),
+    unit_id         VARCHAR(32),
+    unit_name       VARCHAR(64),
+    plant_id        VARCHAR(32),
+    group_code      VARCHAR(32),
+    trade_month     VARCHAR(7)      COMMENT '月份 yyyy-MM',
+
+    -- 绿证
+    cert_issue_count INT            COMMENT '绿证核发量(个)',
+    cert_grant_count INT            COMMENT '绿证补贴量(个)',
+    cert_trade_vol   INT            COMMENT '绿证交易量(个)',
+    cert_price       DECIMAL(18,4)  COMMENT '绿证价格(元/个)',
+    cert_fee         DECIMAL(18,4)  COMMENT '绿证费用(元)',
+
+    -- 绿电
+    green_energy     DECIMAL(18,4)  COMMENT '绿电交易电量(MWh)',
+    green_price      DECIMAL(18,4)  COMMENT '绿电交易电价(元/MWh)',
+    green_fee        DECIMAL(18,4)  COMMENT '绿电交易电费(元)',
+
     __etl_time      DATETIME
 )
-DUPLICATE KEY(tenant_id, trade_date, time_id)
-DISTRIBUTED BY HASH(tenant_id) BUCKETS 4
-PARTITION BY RANGE(trade_date) (
-    FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
-);
+UNIQUE KEY(tenant_id, unit_id, trade_month)
+DISTRIBUTED BY HASH(tenant_id) BUCKETS 4;
 
 -- ============================================================
--- DWD: 成本明细
+-- DWD 7: 容量市场明细表 (覆盖6个容量指标)
 -- ============================================================
+-- 来源: ODS bas_unit + 外部系统
+-- 粒度: 机组 × 月
+CREATE TABLE indicator_dwd.dwd_capacity_detail (
+    tenant_id       BIGINT,
+    unit_id         VARCHAR(32),
+    unit_name       VARCHAR(64),
+    plant_id        VARCHAR(32),
+    group_code      VARCHAR(32),
+    trade_month     VARCHAR(7),
+
+    -- 容量
+    installed_cap   DECIMAL(10,2)   COMMENT '装机容量(MW)',
+    effective_cap   DECIMAL(10,2)   COMMENT '有效容量(MW)',
+    capacity_price  DECIMAL(18,4)   COMMENT '容量电价(元/MW·月)',
+    capacity_fee    DECIMAL(18,4)   COMMENT '容量电费(元/月)',
+    capacity_income DECIMAL(18,4)   COMMENT '容量收益(元/月)',
+
+    __etl_time      DATETIME
+)
+UNIQUE KEY(tenant_id, unit_id, trade_month)
+DISTRIBUTED BY HASH(tenant_id) BUCKETS 4;
+
+-- ============================================================
+-- DWD 8: 成本明细表 (覆盖4个成本指标)
+-- ============================================================
+-- 来源: ODS cost_unit_curve
+-- 粒度: 机组 × 交易日 × 时间点(1-96)
 CREATE TABLE indicator_dwd.dwd_cost_detail (
     tenant_id       BIGINT,
     unit_id         VARCHAR(32),
+    unit_name       VARCHAR(64),
+    plant_id        VARCHAR(32),
+    group_code      VARCHAR(32),
     trade_date      DATE,
     time_id         INT,
-    var_cost_price  DECIMAL(18,4)   COMMENT '单位变动成本',
+
+    var_cost_price  DECIMAL(18,4)   COMMENT '单位变动成本(元/MWh)',
+    var_cost_total  DECIMAL(18,4)   COMMENT '变动成本合计(元)',
+    fixed_cost      DECIMAL(18,4)   COMMENT '固定成本(元/月)',
+
     __etl_time      DATETIME
 )
 DUPLICATE KEY(tenant_id, unit_id, trade_date, time_id)
@@ -510,54 +701,123 @@ DISTRIBUTED BY HASH(tenant_id, unit_id) BUCKETS 4
 PARTITION BY RANGE(trade_date) (
     FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
 );
+
+-- ============================================================
+-- DWD 9: 负荷率/覆盖率明细表 (覆盖10个指标)
+-- ============================================================
+-- 来源: 由 dwd_energy_detail + dwd_unit_param 计算派生
+-- 粒度: 机组 × 交易日
+CREATE TABLE indicator_dwd.dwd_loadrate_detail (
+    tenant_id       BIGINT,
+    unit_id         VARCHAR(32),
+    unit_name       VARCHAR(64),
+    plant_id        VARCHAR(32),
+    group_code      VARCHAR(32),
+    trade_date      DATE,
+
+    -- 负荷率
+    load_rate       DECIMAL(5,2)    COMMENT '负荷率(%)',
+    peak_load_rate  DECIMAL(5,2)    COMMENT '峰负荷率(%)',
+    valley_load_rate DECIMAL(5,2)   COMMENT '谷负荷率(%)',
+    avg_load_rate   DECIMAL(5,2)    COMMENT '平均负荷率(%)',
+
+    -- 覆盖率
+    contract_coverage DECIMAL(5,2)  COMMENT '合约覆盖率(%)',
+    spot_ratio      DECIMAL(5,2)    COMMENT '现货占比(%)',
+
+    -- 利用小时
+    utilization_hours DECIMAL(8,2)  COMMENT '利用小时数(h)',
+    equivalent_hours DECIMAL(8,2)   COMMENT '等效利用小时(h)',
+
+    __etl_time      DATETIME
+)
+DUPLICATE KEY(tenant_id, unit_id, trade_date)
+DISTRIBUTED BY HASH(tenant_id, unit_id) BUCKETS 8
+PARTITION BY RANGE(trade_date) (
+    FROM ('2025-01-01') TO ('2027-01-01') INTERVAL 1 MONTH
+);
 ```
 
-### 5.3 DWD 表汇总
+### 5.4 DWD 表汇总 (10张，覆盖199指标)
 
-| DWD 表 | 来源 ODS | 粒度 | 用途 |
-|--------|----------|------|------|
-| dwd_clearing_detail | ods_spot_ahead + ods_spot_real + ods_sett_power_hour | 机组×日×96点 | 出清/上网主表 |
-| dwd_contract_detail | ods_txm_contract_match_month + ods_bas_unit | 机组×日×96点 | 合约数据 |
-| dwd_unit_param | ods_bas_unit | 机组 | 维度关联 |
-| dwd_settlement_detail | ods_sett_base_subject + ods_sett_unit_bill_day | 机组×日 | 结算费用 |
-| dwd_inter_province_detail | ods_spot_inter_province_* | 日×96点 | 省间数据 |
-| dwd_cost_detail | ods_cost_unit_curve | 机组×日×96点 | 成本数据 |
-| **合计 6 张** | | | |
+| # | DWD 表 | 粒度 | 分区 | 覆盖域 | 指标数 |
+|---|--------|------|------|--------|--------|
+| 1 | dwd_unit_param | 机组 | — | 维度 | 5 |
+| 2 | dwd_energy_detail | 机组×96点 | 月 | 电量 | 35 |
+| 3 | dwd_price_detail | 机组×96点 | 月 | 电价 | 33 |
+| 4 | dwd_fee_detail | 机组×96点 | 月 | 电费 | 44 |
+| 5 | dwd_margin_detail | 机组×96点 | 月 | 边际贡献 | 16 |
+| 6 | dwd_aux_detail | 机组×日 | 月 | 辅助服务 | 12 |
+| 7 | dwd_green_detail | 机组×月 | — | 绿证/绿电 | 9 |
+| 8 | dwd_capacity_detail | 机组×月 | — | 容量 | 6 |
+| 9 | dwd_cost_detail | 机组×96点 | 月 | 成本 | 4 |
+| 10 | dwd_loadrate_detail | 机组×日 | 月 | 负荷率/覆盖率 | 10 |
 
-### 5.4 ODS → DWD 转换逻辑
+### 5.5 ODS → DWD 转换逻辑
+
+#### dwd_energy_detail (电量宽表)
 
 ```sql
--- 例: DWD 出清明细 = 日前出清 JOIN 实时出清 JOIN 上网电量 JOIN 机组参数
-INSERT INTO indicator_dwd.dwd_clearing_detail
+-- 6个ODS表 FULL OUTER JOIN → 1张电量宽表
+INSERT INTO indicator_dwd.dwd_energy_detail
 SELECT
-    COALESCE(a.tenant_id, r.tenant_id, s.tenant_id) AS tenant_id,
-    COALESCE(a.unit_id, r.unit_id, s.unit_id)       AS unit_id,
-    COALESCE(a.unit_name, r.unit_name, s.unit_name) AS unit_name,
-    u.plant_id,
-    u.group_code,
-    COALESCE(a.trade_date, r.trade_date, s.trade_date) AS trade_date,
-    COALESCE(a.time_id, r.time_id, s.time_id)          AS time_id,
+    COALESCE(a.tenant_id, r.tenant_id, s.tenant_id, c.tenant_id, g.tenant_id, m.tenant_id) AS tenant_id,
+    COALESCE(a.unit_id, r.unit_id, s.unit_id, c.unit_id, g.unit_id) AS unit_id,
+    u.unit_name, u.plant_id, u.group_code,
+    COALESCE(a.trade_date, r.trade_date, s.trade_date, c.trade_date, g.trade_date) AS trade_date,
+    COALESCE(a.time_id, r.time_id, s.time_id, c.time_id, g.time_id) AS time_id,
+    c.base_energy,
+    c.mlt_energy,
     a.power    AS dam_energy,
-    a.price    AS dam_price,
     r.power    AS rtm_energy,
-    r.price    AS rtm_price,
     s.online_energy,
-    NOW()      AS __etl_time
+    g.actual_output,
+    m.net_load AS bidding_space,
+    NULL AS int_dam_bid,   -- 省间无机组维度，需单独处理
+    NULL AS int_rtm_bid,
+    NOW() AS __etl_time
 FROM indicator_ods.ods_spot_ahead_trade a
 FULL OUTER JOIN indicator_ods.ods_spot_real_trade r
-    ON a.tenant_id = r.tenant_id
-    AND a.unit_id = r.unit_id
-    AND a.trade_date = r.trade_date
-    AND a.time_id = r.time_id
+    ON a.tenant_id=r.tenant_id AND a.unit_id=r.unit_id AND a.trade_date=r.trade_date AND a.time_id=r.time_id
 FULL OUTER JOIN indicator_ods.ods_sett_power_hour_unit s
-    ON COALESCE(a.tenant_id, r.tenant_id) = s.tenant_id
-    AND COALESCE(a.unit_id, r.unit_id) = s.unit_id
-    AND COALESCE(a.trade_date, r.trade_date) = s.trade_date
-    AND COALESCE(a.time_id, r.time_id) = s.time_id
+    ON COALESCE(a.tenant_id,r.tenant_id)=s.tenant_id AND COALESCE(a.unit_id,r.unit_id)=s.unit_id
+    AND COALESCE(a.trade_date,r.trade_date)=s.trade_date AND COALESCE(a.time_id,r.time_id)=s.time_id
+FULL OUTER JOIN indicator_ods.ods_txm_contract_match_month c
+    ON COALESCE(a.tenant_id,r.tenant_id)=c.tenant_id AND COALESCE(a.unit_id,r.unit_id)=c.unit_id
+    AND COALESCE(a.trade_date,r.trade_date)=c.trade_date AND COALESCE(a.time_id,r.time_id)=c.time_id
+FULL OUTER JOIN indicator_ods.ods_grp_unit_output g
+    ON COALESCE(a.tenant_id,r.tenant_id)=g.tenant_id AND COALESCE(a.unit_id,r.unit_id)=g.unit_id
+    AND COALESCE(a.trade_date,r.trade_date)=g.trade_date AND COALESCE(a.time_id,r.time_id)=g.time_id
+FULL OUTER JOIN indicator_ods.ods_mkt_netload m
+    ON COALESCE(a.tenant_id,r.tenant_id)=m.tenant_id
+    AND COALESCE(a.trade_date,r.trade_date)=m.trade_date AND COALESCE(a.time_id,r.time_id)=m.time_id
 LEFT JOIN indicator_dwd.dwd_unit_param u
-    ON COALESCE(a.tenant_id, r.tenant_id) = u.tenant_id
-    AND COALESCE(a.unit_id, r.unit_id) = u.unit_id
+    ON COALESCE(a.tenant_id,r.tenant_id)=u.tenant_id AND COALESCE(a.unit_id,r.unit_id)=u.unit_id
 WHERE COALESCE(a.trade_date, r.trade_date) = '${calc_date}';
+```
+
+#### dwd_fee_detail (电费宽表)
+
+```sql
+-- Layer 3 电费由公式引擎计算后写入 DWD
+-- 公式引擎从 dwd_energy_detail + dwd_price_detail 读取原始值
+-- 计算结果通过 Java 服务 INSERT 到 dwd_fee_detail
+```
+
+#### dwd_margin_detail (边际贡献)
+
+```sql
+-- Layer 5 由公式引擎计算
+-- 公式: total_margin = total_electric_fee - var_cost
+-- 来源: dwd_fee_detail.total_electric_fee + dwd_cost_detail.var_cost_price
+```
+
+#### dwd_loadrate_detail (负荷率)
+
+```sql
+-- Layer 6 由公式引擎计算
+-- 公式: load_rate = actual_output / rated_capacity * 100
+-- 来源: dwd_energy_detail.actual_output + dwd_unit_param.rated_capacity
 ```
 
 ---
