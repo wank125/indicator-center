@@ -29,25 +29,39 @@
           @multi-query="multiDialogVisible = true"
         />
 
-        <!-- 图表区域 -->
-        <div class="card-section">
-          <IndicatorChart
-            title="指标趋势"
-            v-model:chart-type="chartType"
-            :x-data="chartXData"
-            :y-data="chartYData"
-          />
+        <!-- 空状态引导 -->
+        <div v-if="!store.selectedCode" class="card-section empty-guide">
+          <el-empty description="请在左侧指标树选择指标，或在工具栏搜索指标编码" :image-size="80">
+            <template #description>
+              <p class="guide-text">← 在左侧指标树中选择指标开始查询</p>
+              <p class="guide-text">或在上方搜索框输入指标编码</p>
+            </template>
+          </el-empty>
         </div>
 
-        <!-- 同环比对比 -->
-        <div class="card-section">
-          <CompareTable v-model:compare-type="compareType" :data="store.compareData" />
-        </div>
+        <!-- 有数据时显示 -->
+        <template v-else>
+          <!-- 图表区域 -->
+          <div class="card-section">
+            <IndicatorChart
+              title="指标趋势"
+              v-model:chart-type="chartType"
+              :x-data="chartXData"
+              :y-data="chartYData"
+              :unit="indicatorUnit"
+            />
+          </div>
 
-        <!-- 明细表格 -->
-        <div class="card-section">
-          <DataTable :data="tableData" />
-        </div>
+          <!-- 同环比对比 -->
+          <div class="card-section">
+            <CompareTable v-model:compare-type="compareType" :data="store.compareData" />
+          </div>
+
+          <!-- 明细表格 -->
+          <div class="card-section">
+            <DataTable :data="tableData" />
+          </div>
+        </template>
       </el-main>
     </el-container>
 
@@ -75,6 +89,15 @@ const queryDateRange = ref<string[]>([])
 const chartType = ref<'line' | 'bar' | 'area'>('line')
 const compareType = ref<'yoy' | 'mom'>('yoy')
 const multiDialogVisible = ref(false)
+
+const indicatorUnit = computed(() => {
+  const code = (store.selectedCode || '').toUpperCase()
+  if (code.includes('PRICE') || code.includes('COST')) return '元/MWh'
+  if (code.includes('FEE') || code.includes('MARGIN')) return '元'
+  if (code.includes('ENERGY')) return 'MWh'
+  if (code.includes('RATE') || code.includes('RATIO')) return '%'
+  return ''
+})
 
 const tableData = computed(() => {
   if (store.queryParams.grain === 'timeseries') return store.timeseriesData
@@ -172,5 +195,10 @@ onMounted(() => {
     padding: 12px; height: calc(100vh - 120px); overflow-y: auto;
   }
   .query-main { padding: 0; overflow: visible; }
+  .empty-guide {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 400px;
+  }
+  .guide-text { color: #999; font-size: 14px; margin: 4px 0; }
 }
 </style>

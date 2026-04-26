@@ -18,20 +18,34 @@ import {
   generateMockCompare,
 } from '@/api/mock-data'
 
+const isDev = import.meta.env.DEV
+
 export const useIndicatorStore = defineStore('indicator', () => {
   // ─── 维度树 ─────────────────────────
   const dimensionType = ref<'BUSINESS' | 'MARKET' | 'SUBJECT'>('BUSINESS')
   const dimensionTree = ref<TreeNode[]>([])
   const selectedDimension = ref<string | null>(null)
   const treeLoading = ref(false)
+  const lastError = ref<string | null>(null)
+
+  function setError(msg: string) {
+    lastError.value = msg
+    console.error('[indicator store]', msg)
+  }
 
   async function loadDimensionTree(type?: 'BUSINESS' | 'MARKET' | 'SUBJECT') {
     if (type) dimensionType.value = type
     treeLoading.value = true
     try {
       dimensionTree.value = await getDimensionTree(dimensionType.value, tenantId.value)
-    } catch {
-      dimensionTree.value = MOCK_DIMENSION_TREE
+    } catch (e: any) {
+      if (isDev) {
+        dimensionTree.value = MOCK_DIMENSION_TREE
+        setError(`维度树加载失败(开发模式使用Mock): ${e.message}`)
+      } else {
+        dimensionTree.value = []
+        setError(`维度树加载失败: ${e.message}`)
+      }
     } finally {
       treeLoading.value = false
     }
@@ -70,8 +84,14 @@ export const useIndicatorStore = defineStore('indicator', () => {
         startDate,
         endDate,
       } as any)
-    } catch {
-      timeseriesData.value = generateMockTimeseries()
+    } catch (e: any) {
+      if (isDev) {
+        timeseriesData.value = generateMockTimeseries()
+        setError(`分时数据加载失败(开发模式使用Mock): ${e.message}`)
+      } else {
+        timeseriesData.value = []
+        setError(`分时数据加载失败: ${e.message}`)
+      }
     } finally {
       dataLoading.value = false
     }
@@ -86,8 +106,14 @@ export const useIndicatorStore = defineStore('indicator', () => {
         startDate,
         endDate,
       } as any)
-    } catch {
-      dailyData.value = generateMockDaily()
+    } catch (e: any) {
+      if (isDev) {
+        dailyData.value = generateMockDaily()
+        setError(`日维度数据加载失败(开发模式使用Mock): ${e.message}`)
+      } else {
+        dailyData.value = []
+        setError(`日维度数据加载失败: ${e.message}`)
+      }
     } finally {
       dataLoading.value = false
     }
@@ -102,8 +128,9 @@ export const useIndicatorStore = defineStore('indicator', () => {
         startMonth: startMonth.slice(0, 7),
         endMonth: endMonth.slice(0, 7),
       } as any)
-    } catch {
+    } catch (e: any) {
       monthlyData.value = []
+      setError(`月维度数据加载失败: ${e.message}`)
     } finally {
       dataLoading.value = false
     }
@@ -116,8 +143,14 @@ export const useIndicatorStore = defineStore('indicator', () => {
         unitId: selectedUnitId.value,
         compareType: type,
       } as any)
-    } catch {
-      compareData.value = generateMockCompare()
+    } catch (e: any) {
+      if (isDev) {
+        compareData.value = generateMockCompare()
+        setError(`同环比数据加载失败(开发模式使用Mock): ${e.message}`)
+      } else {
+        compareData.value = []
+        setError(`同环比数据加载失败: ${e.message}`)
+      }
     }
   }
 
@@ -129,8 +162,14 @@ export const useIndicatorStore = defineStore('indicator', () => {
     kpiLoading.value = true
     try {
       kpiList.value = await getKpi(tenantId.value as number)
-    } catch {
-      kpiList.value = MOCK_KPI
+    } catch (e: any) {
+      if (isDev) {
+        kpiList.value = MOCK_KPI
+        setError(`KPI加载失败(开发模式使用Mock): ${e.message}`)
+      } else {
+        kpiList.value = []
+        setError(`KPI加载失败: ${e.message}`)
+      }
     } finally {
       kpiLoading.value = false
     }
@@ -154,6 +193,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
     dimensionTree,
     selectedDimension,
     treeLoading,
+    lastError,
     loadDimensionTree,
     selectedCode,
     selectedUnitId,

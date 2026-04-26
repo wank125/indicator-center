@@ -10,15 +10,25 @@
     <el-table :data="data" size="small" stripe v-if="data.length">
       <el-table-column prop="period" label="期间" width="120" />
       <el-table-column prop="value" label="当前值" align="right">
-        <template #default="{ row }">{{ row.value ?? '--' }}</template>
+        <template #default="{ row }">{{ fmt(row.value) }}</template>
       </el-table-column>
       <el-table-column prop="compareValue" label="对比值" align="right">
-        <template #default="{ row }">{{ row.compareValue ?? '--' }}</template>
+        <template #default="{ row }">{{ fmt(row.compareValue) }}</template>
       </el-table-column>
-      <el-table-column prop="changeRate" label="变化率" align="right" width="120">
+      <el-table-column label="差值" align="right" width="110">
         <template #default="{ row }">
-          <span v-if="row.changeRate !== null" :class="row.changeRate >= 0 ? 'text-success' : 'text-error'">
-            {{ row.changeRate >= 0 ? '+' : '' }}{{ row.changeRate?.toFixed(1) }}%
+          <span v-if="row.value != null && row.compareValue != null"
+            :class="row.value - row.compareValue >= 0 ? 'text-success' : 'text-error'">
+            {{ row.value - row.compareValue >= 0 ? '+' : '' }}{{ fmt(row.value - row.compareValue) }}
+          </span>
+          <span v-else>--</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="changeRate" label="变化率" align="right" width="130">
+        <template #default="{ row }">
+          <span v-if="row.changeRate !== null" class="rate-cell" :class="rateClass(row.changeRate)">
+            <span class="rate-arrow">{{ row.changeRate >= 0 ? '↑' : '↓' }}</span>
+            {{ row.changeRate >= 0 ? '+' : '' }}{{ row.changeRate?.toFixed(2) }}%
           </span>
           <span v-else>--</span>
         </template>
@@ -39,6 +49,16 @@ defineProps<{
 defineEmits<{
   'update:compareType': [value: 'yoy' | 'mom']
 }>()
+
+function fmt(v: number | null | undefined): string {
+  if (v == null) return '--'
+  if (Math.abs(v) >= 10000) return v.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+  return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+}
+
+function rateClass(rate: number): string {
+  return rate >= 0 ? 'text-success' : 'text-error'
+}
 </script>
 
 <style scoped lang="scss">
@@ -47,5 +67,14 @@ defineEmits<{
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+.rate-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 500;
+}
+.rate-arrow {
+  font-size: 14px;
 }
 </style>

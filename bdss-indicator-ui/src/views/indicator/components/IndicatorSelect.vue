@@ -22,8 +22,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { getDefinitions } from '@/api/request'
 import { MOCK_INDICATOR_OPTIONS } from '@/api/mock-data'
+
+interface OptionItem { code: string; name: string }
 
 defineProps<{
   modelValue?: string
@@ -36,18 +39,35 @@ const emit = defineEmits<{
 }>()
 
 const loading = ref(false)
-const filteredList = ref(MOCK_INDICATOR_OPTIONS)
+const allList = ref<OptionItem[]>([])
+const filteredList = ref<OptionItem[]>([])
+
+async function loadOptions() {
+  loading.value = true
+  try {
+    const res = await getDefinitions({ pageSize: 500 })
+    allList.value = res.list.map((d: any) => ({ code: d.indicatorCode, name: d.indicatorName }))
+    filteredList.value = allList.value.slice(0, 50)
+  } catch {
+    allList.value = MOCK_INDICATOR_OPTIONS
+    filteredList.value = MOCK_INDICATOR_OPTIONS
+  } finally {
+    loading.value = false
+  }
+}
 
 function handleSearch(query: string) {
-  if (!query) { filteredList.value = MOCK_INDICATOR_OPTIONS; return }
+  if (!query) { filteredList.value = allList.value.slice(0, 50); return }
   const q = query.toLowerCase()
-  filteredList.value = MOCK_INDICATOR_OPTIONS.filter(
-    (item) => item.code.toLowerCase().includes(q) || item.name.includes(q),
-  )
+  filteredList.value = allList.value
+    .filter((item) => item.code.toLowerCase().includes(q) || item.name.includes(q))
+    .slice(0, 50)
 }
 
 function handleChange(code: string) {
-  const indicator = MOCK_INDICATOR_OPTIONS.find((i) => i.code === code)
+  const indicator = allList.value.find((i) => i.code === code)
   if (indicator) emit('change', code, indicator.name)
 }
+
+onMounted(() => { loadOptions() })
 </script>

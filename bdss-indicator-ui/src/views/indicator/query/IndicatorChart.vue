@@ -21,6 +21,7 @@ const props = defineProps<{
   chartType: 'line' | 'bar' | 'area'
   xData: (string | number)[]
   yData: (number | null)[]
+  unit?: string
 }>()
 
 defineEmits<{
@@ -34,7 +35,11 @@ function renderChart() {
   if (!chartRef.value) return
   if (!chart) chart = echarts.init(chartRef.value)
 
+  const seriesName = props.title || '指标'
+  const unitLabel = props.unit || ''
+
   const seriesBase: any = {
+    name: seriesName,
     data: props.yData,
     smooth: true,
     lineStyle: { color: '#1890ff' },
@@ -51,10 +56,31 @@ function renderChart() {
   }
 
   chart.setOption({
-    tooltip: { trigger: 'axis' },
-    grid: { left: 60, right: 20, top: 20, bottom: 40 },
-    xAxis: { type: 'category', data: props.xData },
-    yAxis: { type: 'value', scale: true },
+    tooltip: {
+      trigger: 'axis',
+      formatter(params: any) {
+        const p = Array.isArray(params) ? params[0] : params
+        const val = p.value != null ? p.value.toLocaleString('zh-CN', { maximumFractionDigits: 4 }) : '--'
+        return `${p.axisValue}<br/>${p.marker} ${p.seriesName}: <b>${val}</b>${unitLabel ? ' ' + unitLabel : ''}`
+      },
+    },
+    legend: { data: [seriesName], top: 0, right: 0 },
+    grid: { left: 70, right: 20, top: 30, bottom: 60 },
+    xAxis: {
+      type: 'category',
+      data: props.xData,
+      axisLabel: { rotate: props.xData.length > 30 ? 45 : 0, fontSize: 11 },
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      name: unitLabel,
+      nameTextStyle: { align: 'right', padding: [0, 40, 0, 0] },
+    },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 },
+    ],
     series: [seriesBase],
   }, true)
 }
@@ -81,7 +107,7 @@ onUnmounted(() => { chart?.dispose(); chart = null; window.removeEventListener('
 }
 
 .query-chart {
-  height: 320px;
+  height: 380px;
   width: 100%;
 }
 </style>
