@@ -9,7 +9,7 @@ import type {
   CompareData,
   KpiData,
 } from '@/types/indicator'
-import { getDimensionTree, getKpi, getTimeseries, getDaily, getCompare } from '@/api/request'
+import { getDimensionTree, getKpi, getTimeseries, getDaily, getMonthly, getCompare } from '@/api/request'
 import {
   MOCK_DIMENSION_TREE,
   MOCK_KPI,
@@ -29,7 +29,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
     if (type) dimensionType.value = type
     treeLoading.value = true
     try {
-      dimensionTree.value = await getDimensionTree(dimensionType.value)
+      dimensionTree.value = await getDimensionTree(dimensionType.value, tenantId.value)
     } catch {
       dimensionTree.value = MOCK_DIMENSION_TREE
     } finally {
@@ -69,7 +69,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
         unitId: selectedUnitId.value,
         startDate,
         endDate,
-      })
+      } as any)
     } catch {
       timeseriesData.value = generateMockTimeseries()
     } finally {
@@ -85,9 +85,25 @@ export const useIndicatorStore = defineStore('indicator', () => {
         unitId: selectedUnitId.value,
         startDate,
         endDate,
-      })
+      } as any)
     } catch {
       dailyData.value = generateMockDaily()
+    } finally {
+      dataLoading.value = false
+    }
+  }
+
+  async function loadMonthly(code: string, startMonth: string, endMonth: string) {
+    dataLoading.value = true
+    try {
+      monthlyData.value = await getMonthly({
+        indicatorCode: code,
+        unitId: selectedUnitId.value,
+        startMonth: startMonth.slice(0, 7),
+        endMonth: endMonth.slice(0, 7),
+      } as any)
+    } catch {
+      monthlyData.value = []
     } finally {
       dataLoading.value = false
     }
@@ -99,7 +115,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
         indicatorCode: code,
         unitId: selectedUnitId.value,
         compareType: type,
-      })
+      } as any)
     } catch {
       compareData.value = generateMockCompare()
     }
@@ -112,7 +128,7 @@ export const useIndicatorStore = defineStore('indicator', () => {
   async function loadKpi() {
     kpiLoading.value = true
     try {
-      kpiList.value = await getKpi()
+      kpiList.value = await getKpi(tenantId.value as number)
     } catch {
       kpiList.value = MOCK_KPI
     } finally {
@@ -121,7 +137,8 @@ export const useIndicatorStore = defineStore('indicator', () => {
   }
 
   // ─── 省网/日期 ──────────────────────
-  const selectedProvince = ref<string>('')
+  const selectedProvince = ref<number | string>('')
+  const tenantId = ref<number | undefined>(undefined)
   const selectedDate = ref<string>('')
 
   function initDefaultDate() {
@@ -149,11 +166,13 @@ export const useIndicatorStore = defineStore('indicator', () => {
     dataLoading,
     loadTimeseries,
     loadDaily,
+    loadMonthly,
     loadCompare,
     kpiList,
     kpiLoading,
     loadKpi,
     selectedProvince,
+    tenantId,
     selectedDate,
     initDefaultDate,
   }

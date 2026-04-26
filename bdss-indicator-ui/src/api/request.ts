@@ -8,6 +8,7 @@ import type {
   BatchQueryReq,
   CalcTriggerReq,
   CalcLogParams,
+  CalcDetailLog,
   KpiData,
   TimeseriesPoint,
   DailyData,
@@ -108,4 +109,78 @@ export function getCalcLog(params: CalcLogParams): Promise<{ list: CalcTaskLog[]
       size: params.pageSize || 20,
     },
   })
+}
+
+export function getCalcDetail(taskId: number): Promise<CalcDetailLog[]> {
+  return request.get(`/qctc/indicator/calc/log/${taskId}/detail`)
+}
+
+// ─── 公式配置 ───────────────────────────
+export interface FormulaData {
+  id?: number
+  indicatorCode: string
+  formulaType: number
+  formulaExpr: string
+  deps?: string
+  depCodes?: string
+  calcOrder?: number
+  conditionExpr?: string
+  trueValueExpr?: string
+  falseValue?: string
+  status?: number
+}
+
+export function getFormulaList(indicatorCode?: string): Promise<FormulaData[]> {
+  return request.get('/qctc/indicator/formula/list', { params: { indicatorCode } })
+}
+
+export function getFormulaByCode(indicatorCode: string): Promise<FormulaData> {
+  return request.get(`/qctc/indicator/formula/code/${indicatorCode}`)
+}
+
+export function saveFormula(data: FormulaData): Promise<void> {
+  return request.post('/qctc/indicator/formula', data)
+}
+
+export function updateFormula(id: number, data: FormulaData): Promise<void> {
+  return request.put(`/qctc/indicator/formula/${id}`, data)
+}
+
+export function validateFormula(data: FormulaData): Promise<boolean> {
+  return request.post('/qctc/indicator/formula/validate', data)
+}
+
+// ─── 数据源映射 ─────────────────────────
+export interface SourceMappingData {
+  id?: number
+  indicatorCode: string
+  sourceType?: number
+  sourceDb: string
+  sourceTable: string
+  sourceField: string
+  filterCondition?: string
+  dateField?: string
+  timeField?: string
+  tenantField?: string
+  status?: number
+}
+
+export function getSourceMappings(indicatorCode?: string): Promise<SourceMappingData[]> {
+  return request.get('/qctc/indicator/source/list', { params: { indicatorCode } })
+}
+
+export function saveSourceMapping(data: SourceMappingData): Promise<void> {
+  return request.post('/qctc/indicator/source', data)
+}
+
+export function updateSourceMapping(id: number, data: SourceMappingData): Promise<void> {
+  return request.put(`/qctc/indicator/source/${id}`, data)
+}
+
+export function deleteSourceMapping(id: number): Promise<void> {
+  return request.delete(`/qctc/indicator/source/${id}`)
+}
+
+export function testSourceMapping(id: number): Promise<boolean> {
+  return request.post(`/qctc/indicator/source/${id}/test`)
 }

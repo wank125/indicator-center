@@ -97,10 +97,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { MOCK_SOURCE_MAPPINGS } from '@/api/mock-data'
+import { getSourceMappings, saveSourceMapping, updateSourceMapping, deleteSourceMapping, testSourceMapping } from '@/api/request'
 
 interface SourceMapping {
   id: number
@@ -114,12 +115,32 @@ interface SourceMapping {
   status: number
 }
 
-const sourceList = ref<SourceMapping[]>([...MOCK_SOURCE_MAPPINGS])
+const sourceList = ref<SourceMapping[]>([])
 const dialogVisible = ref(false)
 const editId = ref<number | null>(null)
+const saving = ref(false)
 const formData = ref<Partial<SourceMapping>>({
   extractType: 'DIRECT', schedule: 'DAILY', status: 1,
 })
+
+async function loadSourceList() {
+  try {
+    const list = await getSourceMappings()
+    sourceList.value = list.map((item: any) => ({
+      id: item.id,
+      sourceName: item.sourceDb,
+      sourceDb: item.sourceDb,
+      sourceTable: item.sourceTable,
+      indicatorCode: item.indicatorCode,
+      fieldName: item.sourceField,
+      extractType: item.sourceType === 1 ? 'DIRECT' : item.sourceType === 2 ? 'API' : 'FILE',
+      schedule: 'DAILY',
+      status: item.status ?? 1,
+    }))
+  } catch {
+    sourceList.value = [...MOCK_SOURCE_MAPPINGS]
+  }
+}
 
 function showAddDialog() {
   editId.value = null
@@ -133,14 +154,48 @@ function handleEdit(row: SourceMapping) {
   dialogVisible.value = true
 }
 
-function handleSave() {
-  dialogVisible.value = false
-  ElMessage.success('保存成功')
+async function handleSave() {
+  if (!formData.value.indicatorCode || !formData.value.sourceDb || !formData.value.sourceTable) {
+    ElMessage.warning('请填写必填字段')
+    return
+  }
+  saving.value = true
+  const sourceType = formData.value.extractType === 'DIRECT' ? 1 : formData.value.extractType === 'API' ? 2 : 3
+  const payload = {
+    indicatorCode: formData.value.indicatorCode,
+    sourceType,
+    sourceDb: formData.value.sourceDb,
+    sourceTable: formData.value.sourceTable,
+    sourceField: formData.value.fieldName || '',
+    status: formData.value.status ?? 1,
+  }
+  try {
+    if (editId.value) {
+      await updateSourceMapping(editId.value, payload as any)
+    } else {
+      await saveSourceMapping(payload as any)
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    loadSourceList()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    saving.value = false
+  }
 }
 
-function handleTest(row: SourceMapping) {
-  ElMessage.info(`测试连接: ${row.sourceDb}.${row.sourceTable}`)
+async function handleTest(row: SourceMapping) {
+  if (!row.id) { ElMessage.info(`测试连接: ${row.sourceDb}.${row.sourceTable}`); return }
+  try {
+    await testSourceMapping(row.id)
+    ElMessage.success('连接测试成功')
+  } catch (e: any) {
+    ElMessage.error(e.message || '连接测试失败')
+  }
 }
+
+onMounted(() => { loadSourceList() })
 </script>
 
 <style scoped lang="scss">

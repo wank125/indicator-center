@@ -21,6 +21,9 @@
               <el-select v-model="filterLayer" placeholder="计算层级" clearable>
                 <el-option label="L0" :value="0" /><el-option label="L1" :value="1" />
                 <el-option label="L2" :value="2" /><el-option label="L3" :value="3" />
+                <el-option label="L4" :value="4" /><el-option label="L5" :value="5" />
+                <el-option label="L6" :value="6" /><el-option label="L7" :value="7" />
+                <el-option label="L8" :value="8" /><el-option label="L9" :value="9" />
               </el-select>
             </el-col>
             <el-col :span="4"><el-button type="primary" @click="loadLogs">查询</el-button></el-col>
@@ -57,7 +60,7 @@
         <el-table-column prop="createTime" label="创建时间" width="170" />
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="viewDetail">明细</el-button>
+            <el-button link type="primary" size="small" @click="viewDetail(row)">明细</el-button>
             <el-button link type="warning" size="small" @click="retryTask(row)">重试</el-button>
           </template>
         </el-table-column>
@@ -65,14 +68,14 @@
     </div>
 
     <!-- 计算明细弹窗（独立组件） -->
-    <CalcDetailTable v-model="detailVisible" :details="MOCK_CALC_DETAILS" />
+    <CalcDetailTable v-model="detailVisible" :details="detailData" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { VideoPlay } from '@element-plus/icons-vue'
-import { triggerCalc, getCalcLog } from '@/api/request'
+import { triggerCalc, getCalcLog, getCalcDetail } from '@/api/request'
 import { MOCK_CALC_TASKS, MOCK_CALC_DETAILS } from '@/api/mock-data'
 import CalcStatusCards from './CalcStatusCards.vue'
 import CalcDetailTable from './CalcDetailTable.vue'
@@ -84,6 +87,8 @@ const filterStatus = ref('')
 const filterLayer = ref<number | string>('')
 const taskLogs = ref<CalcTaskLog[]>([...MOCK_CALC_TASKS])
 const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detailData = ref<any[]>([])
 
 const overview = ref({ totalCount: 90, successCount: 85, failCount: 3, skipCount: 2 })
 
@@ -120,8 +125,27 @@ async function handleTriggerCalc() {
   loadLogs()
 }
 
-function viewDetail() { detailVisible.value = true }
-function retryTask(row: CalcTaskLog) { ElMessage.info(`重试任务 #${row.id} (Mock)`) }
+async function viewDetail(row: CalcTaskLog) {
+  detailVisible.value = true
+  detailLoading.value = true
+  try {
+    detailData.value = await getCalcDetail(row.id)
+  } catch {
+    detailData.value = [...MOCK_CALC_DETAILS]
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function retryTask(row: CalcTaskLog) {
+  try {
+    await triggerCalc({ tradeDate: row.tradeDate })
+    ElMessage.success(`任务 #${row.id} 已重新触发计算`)
+    loadLogs()
+  } catch (e: any) {
+    ElMessage.error(e.message || '重试失败')
+  }
+}
 
 function toLocalDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

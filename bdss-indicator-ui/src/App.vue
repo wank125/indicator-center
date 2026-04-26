@@ -44,7 +44,7 @@
           </el-breadcrumb>
         </div>
         <div class="header-actions">
-          <ProvinceSelect v-model="store.selectedProvince" />
+          <ProvinceSelect v-model="store.selectedProvince" @change="handleProvinceChange" />
         </div>
       </el-header>
       <el-main class="app-main">
@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { DataBoard, Search, Setting, Monitor } from '@element-plus/icons-vue'
 import ProvinceSelect from '@/views/indicator/components/ProvinceSelect.vue'
@@ -66,6 +66,12 @@ const store = useIndicatorStore()
 
 const activeMenu = computed(() => route.path)
 const currentTitle = computed(() => (route.meta.title as string) || '')
+
+function handleProvinceChange(val: number | string) {
+  store.tenantId = val ? Number(val) : undefined
+  store.loadKpi()
+  store.loadDimensionTree()
+}
 </script>
 
 <style lang="scss">

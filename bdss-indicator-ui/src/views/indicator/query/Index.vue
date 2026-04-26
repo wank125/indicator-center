@@ -65,7 +65,7 @@ import CompareTable from './CompareTable.vue'
 import DataTable from './DataTable.vue'
 import MultiQueryDialog from './MultiQueryDialog.vue'
 import { useIndicatorStore } from '@/stores/indicator'
-import { MOCK_INDICATOR_OPTIONS } from '@/api/mock-data'
+import { ElMessage } from 'element-plus'
 
 const store = useIndicatorStore()
 
@@ -78,16 +78,23 @@ const multiDialogVisible = ref(false)
 
 const tableData = computed(() => {
   if (store.queryParams.grain === 'timeseries') return store.timeseriesData
+  if (store.queryParams.grain === 'monthly') return store.monthlyData
   return store.dailyData
 })
 
 const chartXData = computed(() => {
-  const data = store.queryParams.grain === 'timeseries' ? store.timeseriesData : store.dailyData
-  return data.map((d: any) => d.date || d.timePoint)
+  const grain = store.queryParams.grain
+  const data = grain === 'timeseries' ? store.timeseriesData
+    : grain === 'monthly' ? store.monthlyData
+    : store.dailyData
+  return data.map((d: any) => d.date || d.month || d.timePoint)
 })
 
 const chartYData = computed(() => {
-  const data = store.queryParams.grain === 'timeseries' ? store.timeseriesData : store.dailyData
+  const grain = store.queryParams.grain
+  const data = grain === 'timeseries' ? store.timeseriesData
+    : grain === 'monthly' ? store.monthlyData
+    : store.dailyData
   return data.map((d: any) => d.value)
 })
 
@@ -97,11 +104,11 @@ function handleDimChange(type: 'BUSINESS' | 'MARKET' | 'SUBJECT') {
 }
 
 function handleNodeClick(data: any) {
-  // 维度树叶子节点是分类（如 CLEARING_PRICE），不是指标编码（如 DAM_CLEARING_PRICE）
-  // 只有当 dimCode 能匹配到真实指标编码时才触发查询
-  const matched = MOCK_INDICATOR_OPTIONS.find((o) => o.code === data.dimCode)
-  if (matched) {
-    store.setSelectedCode(matched.code)
+  // 叶子节点直接用 dimCode 作为指标编码触发查询
+  // 维度树叶子节点应携带 indicatorCode，若无则用 dimCode
+  const code = data.indicatorCode || data.dimCode
+  if (code) {
+    store.setSelectedCode(code)
     handleQuery()
   }
 }
@@ -111,8 +118,11 @@ async function handleQuery() {
   const [start, end] = queryDateRange.value.length === 2
     ? queryDateRange.value
     : [store.queryParams.startDate, store.queryParams.endDate]
-  if (store.queryParams.grain === 'timeseries') {
+  const grain = store.queryParams.grain
+  if (grain === 'timeseries') {
     await store.loadTimeseries(store.selectedCode, start, end)
+  } else if (grain === 'monthly') {
+    await store.loadMonthly(store.selectedCode, start, end)
   } else {
     await store.loadDaily(store.selectedCode, start, end)
   }
@@ -120,7 +130,31 @@ async function handleQuery() {
 }
 
 function handleExport() {
-  // TODO: 接入后端导出接口
+  const grain = store.queryParams.grain
+  const data = grain === 'timeseries' ? store.timeseriesData
+    : grain === 'monthly' ? store.monthlyData
+    : store.dailyData
+  if (!data.length) { ElMessage.warning('没有可导出的数据'); return }
+
+  const code = store.selectedCode || 'indicator'
+  const headers = grain === 'timeseries' ? '日期,时间点,数值'
+    : grain === 'monthly' ? '月份,数值,年累计'
+    : '日期,数值'
+  const rows = data.map((d: any) => grain === 'timeseries'
+    ? `${d.date},${d.timePoint},${d.value ?? ''}`
+    : grain === 'monthly'
+      ? `${d.month},${d.value ?? ''},${d.yearCumulative ?? ''}`
+      : `${d.date},${d.value ?? ''}`,
+  )
+  const csv = [headers, ...rows].join('\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${code}_${grain}_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(`已导出 ${data.length} 条数据`)
 }
 
 onMounted(() => {

@@ -75,12 +75,16 @@ import { ElMessage } from 'element-plus'
 import DependencyGraph from './DependencyGraph.vue'
 import FormulaPreview from './FormulaPreview.vue'
 import { MOCK_CALC_INDICATORS, MOCK_RAW_INDICATORS } from '@/api/mock-data'
+import { getFormulaByCode, saveFormula, updateFormula, validateFormula } from '@/api/request'
+import type { FormulaData } from '@/api/request'
 
 const route = useRoute()
 const selectedCode = ref((route.query.code as string) || '')
 const formulaType = ref('arithmetic')
 const formula = ref('')
 const indicatorFilter = ref('')
+const existingFormulaId = ref<number | null>(null)
+const saving = ref(false)
 
 interface DepItem { code: string; name: string; layer: number }
 const deps = ref<DepItem[]>([])
@@ -105,9 +109,29 @@ const filteredIndicators = computed(() => {
   return MOCK_RAW_INDICATORS.filter((i) => i.name.includes(kw) || i.code.toLowerCase().includes(kw))
 })
 
-function handleSelect() {
+async function handleSelect() {
   formula.value = ''
   deps.value = []
+  existingFormulaId.value = null
+  if (!selectedCode.value) return
+  try {
+    const existing = await getFormulaByCode(selectedCode.value)
+    if (existing && existing.formulaExpr) {
+      formula.value = existing.formulaExpr
+      existingFormulaId.value = existing.id ?? null
+      if (existing.formulaType != null) {
+        const types = ['arithmetic', 'condition', 'aggregate', 'compare']
+        formulaType.value = types[existing.formulaType] || 'arithmetic'
+      }
+      if (existing.depCodes) {
+        const codes = existing.depCodes.split(',')
+        deps.value = codes.map((code) => {
+          const found = MOCK_RAW_INDICATORS.find((i) => i.code === code)
+          return { code, name: found?.name || code, layer: found?.layer ?? 0 }
+        })
+      }
+    }
+  } catch { /* no existing formula */ }
 }
 
 function addDep(item: typeof MOCK_RAW_INDICATORS[0]) {
@@ -121,7 +145,7 @@ function removeDep(code: string) {
   formula.value = deps.value.map((d) => `{${d.code}}`).join(' - ')
 }
 
-function handleValidate() {
+async function handleValidate() {
   if (!formula.value) { ElMessage.warning('请输入公式表达式'); return }
   const refs = formula.value.match(/\{([^}]+)\}/g)
   if (refs) {
@@ -129,12 +153,44 @@ function handleValidate() {
     const missing = codes.filter((c) => !deps.value.some((d) => d.code === c))
     if (missing.length) { ElMessage.error(`未识别的指标编码: ${missing.join(', ')}`); return }
   }
-  ElMessage.success('公式校验通过')
+  const typeIdx = ['arithmetic', 'condition', 'aggregate', 'compare'].indexOf(formulaType.value)
+  try {
+    const data: FormulaData = {
+      indicatorCode: selectedCode.value,
+      formulaType: typeIdx >= 0 ? typeIdx : 0,
+      formulaExpr: formula.value,
+      depCodes: deps.value.map((d) => d.code).join(','),
+    }
+    await validateFormula(data)
+    ElMessage.success('公式校验通过')
+  } catch (e: any) {
+    ElMessage.error(e.message || '校验失败')
+  }
 }
 
-function handleSave() {
+async function handleSave() {
   if (!selectedCode.value) { ElMessage.warning('请先选择指标'); return }
-  ElMessage.success('公式已保存')
+  if (!formula.value) { ElMessage.warning('请输入公式表达式'); return }
+  saving.value = true
+  const typeIdx = ['arithmetic', 'condition', 'aggregate', 'compare'].indexOf(formulaType.value)
+  const data: FormulaData = {
+    indicatorCode: selectedCode.value,
+    formulaType: typeIdx >= 0 ? typeIdx : 0,
+    formulaExpr: formula.value,
+    depCodes: deps.value.map((d) => d.code).join(','),
+  }
+  try {
+    if (existingFormulaId.value) {
+      await updateFormula(existingFormulaId.value, data)
+    } else {
+      await saveFormula(data)
+    }
+    ElMessage.success('公式已保存')
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(() => {
